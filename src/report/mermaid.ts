@@ -22,6 +22,8 @@ export interface DiagramOpts {
   level?: string
   view?: 'components' | 'classes' | 'auto'
   maxNodes?: number
+  /** emit `click` callbacks for the browser viewer */
+  interactive?: boolean
 }
 
 export function diagram(a: Analysis, opts: DiagramOpts = {}): string {
@@ -35,7 +37,7 @@ export function diagram(a: Analysis, opts: DiagramOpts = {}): string {
     level = only
   }
   const view = opts.view && opts.view !== 'auto' ? opts.view : autoView(a, level)
-  return view === 'classes' ? classDiagram(a, level, opts.maxNodes ?? 40) : componentDiagram(a, level, opts.maxNodes ?? 40)
+  return view === 'classes' ? classDiagram(a, level, opts.maxNodes ?? 40, !!opts.interactive) : componentDiagram(a, level, opts.maxNodes ?? 40, !!opts.interactive)
 }
 
 function autoView(a: Analysis, level: string): 'components' | 'classes' {
@@ -45,7 +47,7 @@ function autoView(a: Analysis, level: string): 'components' | 'classes' {
   return direct.length > 0 && children.size <= direct.length + 2 ? 'classes' : 'components'
 }
 
-function componentDiagram(a: Analysis, level: string, maxNodes: number): string {
+function componentDiagram(a: Analysis, level: string, maxNodes: number, interactive = false): string {
   const mods = [...a.model.modules.values()].filter((m) => !m.isTest && under(m.id, level))
   const children = new Map<string, { modules: number; worstCrap: number; cov: [number, number] }>()
   for (const m of mods) {
@@ -86,6 +88,7 @@ function componentDiagram(a: Analysis, level: string, maxNodes: number): string 
     const inCycle = [...cycleMembers].some((m) => under(m, c))
     const cls = info.worstCrap > a.config.thresholds.crap * 2 ? 'bad' : info.worstCrap > a.config.thresholds.crap ? 'warn' : 'ok'
     lines.push(`  class ${safeId(c)} ${cls}${inCycle ? ',cyc' : ''}`)
+    if (interactive) lines.push(`  click ${safeId(c)} call bmuOpen("${c}")`)
   }
   if (ranked.length > maxNodes) lines.push(`  more["… +${ranked.length - maxNodes} more"]`)
   let i = 0
@@ -130,7 +133,7 @@ const STEREO: Record<string, string> = {
   machine: 'machine',
 }
 
-function classDiagram(a: Analysis, level: string, maxNodes: number): string {
+function classDiagram(a: Analysis, level: string, maxNodes: number, interactive = false): string {
   const isFile = /\.[a-z]+$/.test(level)
   const els = [...a.model.elements.values()].filter((e) => {
     const m = a.model.modules.get(e.module)
@@ -160,6 +163,7 @@ function classDiagram(a: Analysis, level: string, maxNodes: number): string {
     lines.push('  }')
     const worst = Math.max(0, ...e.members.map((m) => m.metrics.crap ?? 0))
     if (worst > crapT) lines.push(`  style ${name} fill:${worst > crapT * 2 ? '#fde2e2' : '#fff4d6'}`)
+    if (interactive) lines.push(`  click ${name} call bmuOpen("${e.id}")`)
   }
   // edges between shown elements, plus edges to outside elements as plain names
   const external = new Map<string, string>()

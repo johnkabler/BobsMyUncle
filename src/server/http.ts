@@ -1,4 +1,6 @@
 import { createServer, type ServerResponse } from 'node:http'
+import { createReadStream } from 'node:fs'
+import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import type { BmuConfig } from '../core/config.js'
 import type { Store } from '../store/db.js'
@@ -48,11 +50,20 @@ export async function startServer(root: string, store: Store, config: BmuConfig,
     if (url.pathname === '/') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
       res.end(UI_HTML)
+    } else if (url.pathname === '/mermaid.min.js') {
+      try {
+        const file = createRequire(import.meta.url).resolve('mermaid/dist/mermaid.min.js')
+        res.writeHead(200, { 'content-type': 'text/javascript', 'cache-control': 'max-age=86400' })
+        createReadStream(file).pipe(res)
+      } catch {
+        res.writeHead(404)
+        res.end()
+      }
     } else if (url.pathname === '/api/state') json(state())
     else if (url.pathname === '/api/diagram') {
       if (!latest) return json({ mermaid: '' })
       const view = (url.searchParams.get('view') ?? 'auto') as 'auto' | 'classes' | 'components'
-      json({ mermaid: diagram(latest, { level: url.searchParams.get('level') ?? '', view, maxNodes: Number(url.searchParams.get('max') ?? 60) }) })
+      json({ mermaid: diagram(latest, { level: url.searchParams.get('level') ?? '', view, maxNodes: Number(url.searchParams.get('max') ?? 60), interactive: true }) })
     } else if (url.pathname === '/api/explain') {
       json({ text: latest ? explain(latest, store, url.searchParams.get('target') ?? '') : '' })
     } else if (url.pathname === '/events') {

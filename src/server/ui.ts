@@ -28,8 +28,11 @@ export const UI_HTML = /* html */ `<!doctype html>
   <h3>Details</h3><pre id="details">Click a node or finding.</pre>
   <h3>Live</h3><div id="log"></div>
 </aside>
+<script src="/mermaid.min.js"></script>
 <script type="module">
-import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'
+const mermaid = window.mermaid
+window.addEventListener('error', (e) => { document.getElementById('details').textContent = 'UI error: ' + e.message })
+window.addEventListener('unhandledrejection', (e) => { document.getElementById('details').textContent = 'UI error: ' + (e.reason && e.reason.message || e.reason) })
 mermaid.initialize({ startOnLoad:false, securityLevel:'loose', maxTextSize: 500000, flowchart:{ htmlLabels:true }, theme:'default' })
 let level = new URLSearchParams(location.search).get('level') || ''
 const $ = (id) => document.getElementById(id)
@@ -42,24 +45,14 @@ function crumbs(){
   $('crumbs').querySelectorAll('a').forEach(a => a.onclick = () => go(a.dataset.l))
 }
 function go(l){ level = l; history.replaceState(null,'','?level='+encodeURIComponent(l)); render() }
-window.bmuDrill = (id) => {
-  const l = id.replace(/^n_/,'')
-  // node ids are path-derived; ask the server which path it is via explain on click handler
-}
 let seq = 0
 async function render(){
   crumbs()
   const view = $('view').value
   const { mermaid: src } = await api('/api/diagram?level='+encodeURIComponent(level)+'&view='+view)
   if (!src) { $('canvas').textContent = 'waiting for first scan…'; return }
-  // add click handlers for component nodes (paths are in labels; map by order)
-  const nodes = [...src.matchAll(/^\\s+(n_[A-Za-z0-9_]+)\\[\\[?"([^"]+)"/gm)]
-  let withClicks = src
-  for (const [, id, label] of nodes) {
-    const name = label.split('<br/>')[0].replace(/\\/$/,'')
-    const path = (level ? level + '/' : '') + name
-    withClicks += '\\n  click ' + id + ' call bmuOpen("' + path + '")'
-  }
+  $('canvas').textContent = 'rendering…'
+  const withClicks = src
   try {
     const { svg, bindFunctions } = await mermaid.render('d' + (++seq), withClicks)
     $('canvas').innerHTML = svg; bindFunctions?.($('canvas'))
@@ -68,7 +61,9 @@ async function render(){
 window.bmuOpen = async (path) => {
   const { text } = await api('/api/explain?target='+encodeURIComponent(path))
   $('details').textContent = text
-  if (!/\\.[a-z]+$/.test(path)) go(path)
+  if (path.includes('#')) return            // element: details only
+  if (/\\.[a-z]+$/.test(path)) { $('view').value = 'classes'; go(path); return } // file: its classes
+  go(path)                                  // directory: drill down
 }
 async function refreshState(){
   const s = await api('/api/state')
@@ -80,7 +75,7 @@ async function refreshState(){
   $('findings').querySelectorAll('.f').forEach(el => el.onclick = async () => { const { text } = await api('/api/explain?target='+el.dataset.id); $('details').textContent = text })
 }
 $('view').onchange = render; $('onlyNew').onchange = refreshState
-const es = new EventSource('/events')
-es.addEventListener('update', (e) => { const d = JSON.parse(e.data); for (const l of d.lines) { const div = document.createElement('div'); div.textContent = new Date().toLocaleTimeString()+' '+l; $('log').prepend(div) } refreshState(); render() })
+const es = new URLSearchParams(location.search).has('nolive') ? null : new EventSource('/events')
+es?.addEventListener('update', (e) => { const d = JSON.parse(e.data); for (const l of d.lines) { const div = document.createElement('div'); div.textContent = new Date().toLocaleTimeString()+' '+l; $('log').prepend(div) } refreshState(); render() })
 refreshState(); render()
 </script></body></html>`
