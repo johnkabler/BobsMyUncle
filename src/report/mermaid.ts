@@ -140,7 +140,20 @@ function classDiagram(a: Analysis, level: string, maxNodes: number, interactive 
     if (!m || m.isTest) return false
     return isFile ? e.module === level : m.component === level
   })
-  const shown = els.slice(0, maxNodes)
+  // fold `FooProps` types/interfaces into the `Foo` component in the same file (React convention)
+  const comps = new Set(els.filter((e) => e.kind === 'component').map((e) => `${e.module}#${e.name}`))
+  const propsOf = new Map<string, (typeof els)[number]>()
+  const visible = els.filter((e) => {
+    if ((e.kind === 'type' || e.kind === 'interface') && e.name.endsWith('Props')) {
+      const key = `${e.module}#${e.name.slice(0, -5)}`
+      if (comps.has(key)) {
+        propsOf.set(key, e)
+        return false
+      }
+    }
+    return true
+  })
+  const shown = visible.slice(0, maxNodes)
   const ids = new Set(shown.map((e) => e.id))
   const lines = ['classDiagram']
   const crapT = a.config.thresholds.crap
@@ -148,6 +161,8 @@ function classDiagram(a: Analysis, level: string, maxNodes: number, interactive 
     const name = safeId(e.id)
     lines.push(`  class ${name}["${esc(e.kind === 'module' ? e.module.split('/').pop()! : e.name)}"] {`)
     if (STEREO[e.kind] && e.kind !== 'class') lines.push(`    <<${STEREO[e.kind]}>>`)
+    const props = propsOf.get(e.id)
+    if (props) for (const f of props.members.slice(0, 10)) lines.push(`    +${esc(f.name)}${f.type ? ' ' + esc(f.type) : ''} «prop»`)
     for (const m of e.members.slice(0, 15)) {
       const vis = m.visibility === 'private' ? '-' : m.visibility === 'protected' ? '#' : '+'
       if (m.kind === 'field') lines.push(`    ${vis}${esc(m.name)}${m.type ? ' ' + esc(m.type) : ''}`)
@@ -209,6 +224,6 @@ function classDiagram(a: Analysis, level: string, maxNodes: number, interactive 
     uses++
   }
   for (const [id, name] of external) lines.push(`  class ${safeId(id)}["${esc(name)}"]`)
-  if (els.length > maxNodes) lines.push(`  %% … +${els.length - maxNodes} more elements`)
+  if (visible.length > maxNodes) lines.push(`  %% … +${visible.length - maxNodes} more elements`)
   return lines.join('\n')
 }

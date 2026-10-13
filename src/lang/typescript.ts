@@ -342,7 +342,18 @@ function handleDeclaration(decl: Node, exported: boolean, outerDecorators: Node[
       break
     case 'type_alias_declaration': {
       const name = decl.childForFieldName('name')?.text
-      if (name) ctx.elements.push({ name, kind: 'type', start: line(decl), end: endLine(decl), exported, members: [] })
+      if (!name) break
+      const value = decl.childForFieldName('value')
+      const members: Member[] = []
+      if (value?.type === 'object_type') {
+        for (const m of namedChildren(value)) {
+          const mname = m.childForFieldName('name')?.text
+          if (!mname) continue
+          if (m.type === 'property_signature') members.push({ name: mname, kind: 'field', visibility: 'public', start: line(m), end: endLine(m), type: typeName(m.childForFieldName('type')) ?? undefined })
+          else if (m.type === 'method_signature') members.push({ name: mname, kind: 'method', visibility: 'public', start: line(m), end: endLine(m) })
+        }
+      }
+      ctx.elements.push({ name, kind: 'type', start: line(decl), end: endLine(decl), exported, members })
       break
     }
     case 'enum_declaration': {
