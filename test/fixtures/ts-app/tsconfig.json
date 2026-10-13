@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "CommonJS", "moduleResolution": "bundler", "jsx": "react-jsx",
+    "experimentalDecorators": true,
+    "paths": {
+      "@domains/*": ["./src/core/domains/*"],
+      "@application/*": ["./src/core/application/*"],
+      "@infra/*": ["./src/core/infra/*"],
+      "@http/*": ["./src/http/*"],
+      "~/*": ["./*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

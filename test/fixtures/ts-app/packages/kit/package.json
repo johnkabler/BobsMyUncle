@@ -1,0 +1,1 @@
+{ "name": "kit", "version": "0.0.1", "exports": { "./button": { "types": "./dist/button.d.ts", "import": "./dist/button.js" } } }

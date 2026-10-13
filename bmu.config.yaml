@@ -1,0 +1,9 @@
+# bmu analysing itself
+exclude:
+  - "test/fixtures/**"
+rules:
+  layers:
+    - [src/core]
+    - [src/lang, src/ingest, src/store]
+    - [src/runners, src/engine, src/report]
+    - [src/cli, src/server]

@@ -1,0 +1,29 @@
+{
+  "name": "bobsmyuncle",
+  "version": "0.1.0",
+  "description": "Live UML + code quality monitor for LLM coding agents (TypeScript, Python, Elixir)",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "bmu": "./bin/bmu.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "bmu": "node bin/bmu.js"
+  },
+  "dependencies": {
+    "oxc-resolver": "^11.24.2",
+    "web-tree-sitter": "^0.27.1",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  }
+}

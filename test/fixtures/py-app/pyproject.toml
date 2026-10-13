@@ -1,0 +1,16 @@
+[project]
+name = "py-app"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+  "integration: tests that need external services",
+]
+
+[tool.coverage.run]
+source = ["src/app"]
+branch = true

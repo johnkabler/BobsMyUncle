@@ -1,0 +1,7 @@
+rules:
+  layers:
+    - [src/core/domains]
+    - [src/core/application]
+    - [src/core/infra, src/http]
+coverage:
+  background: false
