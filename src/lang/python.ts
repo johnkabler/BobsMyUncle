@@ -151,7 +151,8 @@ function shouldSkipBase(name: string): boolean {
 }
 
 function visibilityOf(name: string): Visibility {
-  if (name.startsWith('__') && !name.endsWith('__')) return 'private'
+  if (name.startsWith('__') && name.endsWith('__')) return 'public' // dunder
+  if (name.startsWith('__')) return 'private'
   if (name.startsWith('_')) return 'protected'
   return 'public'
 }

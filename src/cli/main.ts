@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { findRoot, loadConfig } from '../engine/files.js'
 import { Store } from '../store/db.js'
-import { analyze, reconcile, type Analysis } from '../engine/analyze.js'
+import { analyze, reconcile, fingerprint, type Analysis } from '../engine/analyze.js'
 import { runCoverage, queueCoverage, spawnBackgroundCoverage } from '../engine/background.js'
 import { affectedTests } from '../engine/build.js'
 import { diagram } from '../report/mermaid.js'
@@ -310,6 +310,9 @@ async function handleHook(root: string, store: Store, config: ReturnType<typeof 
     if (event === 'post-tool') {
       const tool = String(payload.toolName ?? payload.tool_name ?? payload.tool ?? '')
       if (tool && !/edit|write|patch|replace|bash|shell|terminal|command|multiedit/i.test(tool)) return
+      // fast path: nothing relevant changed since the last hook (e.g. a read-only bash command)
+      const fp = fingerprint(root, config)
+      if (store.getMeta('hook_fp') === fp && store.getMeta('hook_pending_report') !== '1') return
       const a = await analyze(root, store, config)
       const d = reconcile(store, a.findings, { mark: true })
       writeContextFile(a, store)
@@ -320,6 +323,8 @@ async function handleHook(root: string, store: Store, config: ReturnType<typeof 
           spawnBackgroundCoverage(root)
         }
       }
+      store.setMeta('hook_fp', fingerprint(root, config))
+      store.setMeta('hook_pending_report', '0')
       const msg = hookMessage(d, config.report.hookMaxLines)
       if (!msg) return
       if (harness === 'grok' || harness === 'claude') {

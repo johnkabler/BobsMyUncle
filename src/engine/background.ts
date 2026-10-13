@@ -129,6 +129,8 @@ export async function runCoverage(root: string, store: Store, config: BmuConfig,
     const reports = results.flatMap((r) => r.reports.map((p) => path.relative(root, p)))
     const after = await analyze(root, store, config, { extraReports: reports, onlyFiles: opts.all ? undefined : files })
     reconcile(store, after.findings, { mark: false })
+    // let the next hook deliver coverage-driven findings even if no source file changed
+    store.setMeta('hook_pending_report', '1')
     return { results, tests: runnable, analysis: after }
   } finally {
     releaseLock(root)

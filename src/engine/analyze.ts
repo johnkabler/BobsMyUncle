@@ -61,6 +61,22 @@ export function sourceFiles(root: string, config: BmuConfig): { all: string[]; s
   return { all, sources }
 }
 
+/** Cheap fingerprint of all analysed inputs (paths, mtimes, sizes, coverage reports, config). */
+export function fingerprint(root: string, config: BmuConfig): string {
+  const { sources } = sourceFiles(root, config)
+  const h = createHash('sha1')
+  h.update(JSON.stringify(config))
+  for (const f of [...sources, ...config.coverage.reports]) {
+    try {
+      const st = statSync(path.join(root, f))
+      h.update(`${f}:${st.mtimeMs}:${st.size}\n`)
+    } catch {
+      /* missing */
+    }
+  }
+  return h.digest('hex')
+}
+
 /** Ingest coverage report files that changed since we last read them. Returns number of files updated. */
 export function ingestReports(root: string, store: Store, config: BmuConfig, known: Map<string, string>, extraReports: string[] = [], onlyFiles?: Set<string>): number {
   let n = 0
