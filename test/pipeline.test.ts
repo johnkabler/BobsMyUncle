@@ -32,7 +32,7 @@ describe('pipeline: typescript fixture', () => {
 
   it('first scan becomes the baseline; new regressions are reported once', async () => {
     const r1 = await run(root)
-    expect(r1.a.findings.map((f) => f.rule).sort()).toEqual(['cycle', 'layer', 'uncovered', 'uncovered'])
+    expect(r1.a.findings.map((f) => f.rule).sort()).toEqual(['cycle', 'layer', 'mutants', 'uncovered', 'uncovered'])
     expect(r1.d.fresh).toHaveLength(0) // baseline: existing debt is not reported
     r1.store.close()
 
@@ -74,6 +74,7 @@ describe('pipeline: typescript fixture', () => {
     const m = svc.members.find((x) => x.name === 'applyDiscount')!
     expect(m.metrics.coverage).toBeCloseTo(8 / 12, 2)
     expect(m.metrics.crap).toBeGreaterThan(10)
+    expect(m.metrics.mutation).toMatchObject({ killed: 1, survived: 1, noCoverage: 1 })
     expect(affectedTests(a.model, ['src/core/domains/orders/order.entity.ts'])).toEqual(['src/core/application/order.service.test.ts'])
     const mm = diagram(a, { level: 'src/core/application', view: 'classes' })
     expect(mm).toMatch(/classDiagram/)

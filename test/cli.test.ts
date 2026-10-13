@@ -20,7 +20,7 @@ describe('cli', () => {
   it('scan / findings --json / explain', () => {
     expect(bmu(['scan']).stdout).toMatch(/15 modules/)
     const rows = JSON.parse(bmu(['findings', '--json']).stdout)
-    expect(rows.map((r: any) => r.rule).sort()).toEqual(['cycle', 'layer', 'uncovered', 'uncovered'])
+    expect(rows.map((r: any) => r.rule).sort()).toEqual(['cycle', 'layer', 'mutants', 'uncovered', 'uncovered'])
     expect(bmu(['explain', rows[0].id]).stdout).toMatch(new RegExp(rows[0].id))
   })
 

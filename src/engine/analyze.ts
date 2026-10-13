@@ -7,7 +7,8 @@ import { computeFindings, bySeverity, stabilizeCycleIds, type Finding } from '..
 import { componentMetrics, type ComponentMetrics } from '../core/graph.js'
 import { extract, langOf, DEFAULT_EXCLUDES, EXTRACTOR_VERSION } from '../lang/index.js'
 import { makeResolvers } from '../lang/resolve.js'
-import { mapReportPaths, parseCoverage, spanCoverage, crap } from '../ingest/coverage.js'
+import { mapReportPaths, pathMapper, parseCoverage, spanCoverage, crap } from '../ingest/coverage.js'
+import { parseMutationReport } from '../ingest/mutation.js'
 import type { Store, FindingRow } from '../store/db.js'
 import { listFiles, globToRegExp } from './files.js'
 import { buildModel } from './build.js'
@@ -101,6 +102,30 @@ export function ingestReports(root: string, store: Store, config: BmuConfig, kno
   return n
 }
 
+/** Ingest mutation reports (Stryker schema or generic list) that changed since last read. */
+export function ingestMutation(root: string, store: Store, config: BmuConfig, known: Map<string, string>, extra: string[] = []): number {
+  let n = 0
+  for (const rel of [...config.mutation.reports, ...extra]) {
+    const p = path.isAbsolute(rel) ? rel : path.join(root, rel)
+    if (!existsSync(p)) continue
+    const st = statSync(p)
+    const key = `mut:${rel}`
+    const stamp = `${st.mtimeMs}:${st.size}`
+    if (store.getMeta(key) === stamp) continue
+    const report = parseMutationReport(readFileSync(p, 'utf8'))
+    const map = pathMapper(root, known.keys())
+    for (const [raw, mutants] of report) {
+      const file = map(raw)
+      if (!file) continue
+      store.putMutation(file, known.get(file)!, mutants)
+      n++
+    }
+    store.setMeta(key, stamp)
+    store.event('mutation.ingested', { report: rel, files: n })
+  }
+  return n
+}
+
 export async function analyze(root: string, store: Store, config: BmuConfig, opts: { extraReports?: string[]; onlyFiles?: string[] } = {}): Promise<Analysis> {
   const t0 = Date.now()
   if (store.getMeta('extractor') !== EXTRACTOR_VERSION) {
@@ -170,6 +195,8 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
 
   ingestReports(root, store, config, current, opts.extraReports, opts.onlyFiles ? new Set(opts.onlyFiles) : undefined)
 
+  ingestMutation(root, store, config, current)
+
   const resolvers = makeResolvers(root, all, facts)
   const model = buildModel(root, facts, resolvers)
 
@@ -216,6 +243,27 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
     }
   }
 
+  // ---- apply mutation results ----
+  for (const [file, row] of store.allMutation()) {
+    const mod = model.modules.get(file)
+    if (!mod || row.hash !== current.get(file)) continue
+    for (const el of mod.elements)
+      for (const m of el.members) {
+        if (m.cc === undefined) continue
+        const nested = el.members.filter((o) => o !== m && o.cc !== undefined && o.start >= m.start && o.end <= m.end && (o.start !== m.start || o.end !== m.end))
+        const inSpan = row.mutants.filter((x: any) => x.line >= m.start && x.line <= m.end && !nested.some((o) => x.line >= o.start && x.line <= o.end))
+        if (!inSpan.length) continue
+        const count = (st: string) => inSpan.filter((x: any) => x.status === st).length
+        m.metrics.mutation = {
+          killed: count('killed'),
+          survived: count('survived'),
+          noCoverage: count('nocoverage'),
+          timeout: count('timeout'),
+          survivors: inSpan.filter((x: any) => x.status === 'survived').map((x: any) => ({ line: x.line, mutator: x.mutator })),
+        }
+      }
+  }
+
   const { findings, cycles, edges } = computeFindings(model, config)
   stabilizeCycleIds(findings, store.allFindings().filter((r) => r.rule === 'cycle' && r.status !== 'resolved'))
   findings.sort(bySeverity)
@@ -246,7 +294,7 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
   }
 }
 
-const MEMBER_RULES = new Set(['crap', 'complexity', 'uncovered', 'file-coverage'])
+const MEMBER_RULES = new Set(['crap', 'complexity', 'uncovered', 'file-coverage', 'mutants'])
 
 export interface Delta {
   fresh: FindingRow[] // new since baseline

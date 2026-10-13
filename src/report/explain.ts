@@ -21,6 +21,7 @@ function elementBlock(a: Analysis, el: ElementNode): string[] {
     const parts = [`cc ${mm.cc ?? '?'}`, `cov ${pct(mm.coverage)}${mm.stale ? ' (stale)' : ''}`]
     if (mm.crap !== undefined) parts.push(`CRAP ${Math.round(mm.crap)}`)
     if (mm.uncovered?.length) parts.push(`uncovered ${ranges(mm.uncovered)}`)
+    if (mm.mutation) parts.push(`mutants ${mm.mutation.killed} killed / ${mm.mutation.survived} survived${mm.mutation.survivors.length ? ' @' + mm.mutation.survivors.slice(0, 4).map((x) => `${x.line} ${x.mutator}`).join(', ') : ''}`)
     out.push(`  ${vis} ${m.name}()  L${m.start}-${m.end}  ${parts.join(', ')}`)
   }
   const outEdges = a.model.elementEdges.filter((e) => e.from === el.id)
@@ -50,6 +51,7 @@ export function explain(a: Analysis, store: Store, target: string): string {
       layer: 'An inner (higher-level, more stable) layer depends on an outer one. Invert the dependency: define an interface in the inner layer and implement it in the outer one.',
       forbidden: 'This dependency is explicitly forbidden by the bmu config.',
       'file-coverage': 'File coverage is below the configured minimum.',
+      mutants: 'Mutation testing changed this code and no test failed: the tests execute it but do not check the behaviour. Add assertions that would fail for the listed mutations.',
     }
     out.push(hint[f.rule] ?? '')
     const subjectEl = f.subject.includes('#') ? a.model.elements.get(f.subject.split('.').length > 1 ? f.subject.slice(0, f.subject.lastIndexOf('.')) : f.subject) : undefined

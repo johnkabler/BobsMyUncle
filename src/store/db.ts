@@ -48,6 +48,7 @@ export class Store {
         baseline_value REAL, reported_value REAL, ack_reason TEXT);
       CREATE TABLE IF NOT EXISTS snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, commit_sha TEXT, summary TEXT);
       CREATE TABLE IF NOT EXISTS commit_summaries (sha TEXT PRIMARY KEY, at INTEGER, summary TEXT);
+      CREATE TABLE IF NOT EXISTS mutation (path TEXT PRIMARY KEY, hash TEXT NOT NULL, mutants TEXT NOT NULL, measured_at INTEGER);
       CREATE TABLE IF NOT EXISTS changed_files (path TEXT PRIMARY KEY, at INTEGER);
       CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, text TEXT);
     `)
@@ -103,6 +104,15 @@ export class Store {
   allCoverage(): Map<string, CoverageRow> {
     const rows = this.db.prepare('SELECT * FROM coverage').all() as any[]
     return new Map(rows.map((r) => [r.path, { path: r.path, hash: r.hash, hits: new Map(JSON.parse(r.hits)), source: r.source, measured_at: r.measured_at, lines: r.lines ? JSON.parse(r.lines) : null }]))
+  }
+
+  // ---- mutation ----
+  putMutation(p: string, hash: string, mutants: unknown[]) {
+    this.db.prepare('INSERT OR REPLACE INTO mutation(path,hash,mutants,measured_at) VALUES(?,?,?,?)').run(p, hash, JSON.stringify(mutants), Date.now())
+  }
+  allMutation(): Map<string, { hash: string; mutants: any[] }> {
+    const rows = this.db.prepare('SELECT * FROM mutation').all() as any[]
+    return new Map(rows.map((r) => [r.path, { hash: r.hash, mutants: JSON.parse(r.mutants) }]))
   }
 
   // ---- findings ----

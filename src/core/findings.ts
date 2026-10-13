@@ -3,7 +3,7 @@ import type { Model, Edge } from './model.js'
 import type { BmuConfig } from './config.js'
 import { findCycles, cyclePath, ruleViolations, projectEdges } from './graph.js'
 
-export type Rule = 'crap' | 'complexity' | 'uncovered' | 'cycle' | 'layer' | 'forbidden' | 'file-coverage'
+export type Rule = 'crap' | 'complexity' | 'uncovered' | 'cycle' | 'layer' | 'forbidden' | 'file-coverage' | 'mutants'
 export type Severity = 'high' | 'medium' | 'low'
 
 export interface Finding {
@@ -71,6 +71,20 @@ export function computeFindings(model: Model, config: BmuConfig): { findings: Fi
           value: mm.cc,
           severity: mm.cc > t.cc * 2 ? 'medium' : 'low',
           message: `complexity ${mm.cc} ${label} (${where}) — no fresh coverage`,
+        })
+      }
+      if (mm.mutation && mm.mutation.survived > 0) {
+        const mu = mm.mutation
+        const total = mu.killed + mu.survived + mu.noCoverage + mu.timeout
+        out.push({
+          id: findingId('mutants', m.id),
+          rule: 'mutants',
+          subject: m.id,
+          file: el.module,
+          line: mu.survivors[0]?.line ?? m.start,
+          value: mu.survived,
+          severity: 'medium',
+          message: `${mu.survived} surviving mutant${mu.survived > 1 ? 's' : ''} in ${label} (${el.module}:${mu.survivors.slice(0, 3).map((x) => `${x.line} ${x.mutator}`).join(', ')}) — mutation score ${Math.round(((mu.killed + mu.timeout) / Math.max(1, total)) * 100)}%`,
         })
       }
       if (t.uncovered && mm.uncovered && mm.uncovered.length && !mm.stale) {

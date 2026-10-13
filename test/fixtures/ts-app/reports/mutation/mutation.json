@@ -1,0 +1,6 @@
+{ "schemaVersion": "1", "thresholds": { "high": 80, "low": 60 }, "files": {
+  "src/core/application/order.service.ts": { "language": "typescript", "source": "", "mutants": [
+    { "id": "1", "mutatorName": "EqualityOperator", "location": { "start": { "line": 13, "column": 9 }, "end": { "line": 13, "column": 22 } }, "status": "Killed" },
+    { "id": "2", "mutatorName": "ConditionalExpression", "location": { "start": { "line": 14, "column": 14 }, "end": { "line": 14, "column": 40 } }, "status": "Survived" },
+    { "id": "3", "mutatorName": "LogicalOperator", "location": { "start": { "line": 15, "column": 14 }, "end": { "line": 15, "column": 30 } }, "status": "NoCoverage" }
+  ] } } }

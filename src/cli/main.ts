@@ -38,6 +38,7 @@ Usage: bmu <command> [options]
   init [--shared] [--force]  write a config with inferred layers/runners (.bmu/config.yaml, or bmu.config.yaml with --shared)
   install grok|opencode [--local|--shared]
   hook <session-start|post-tool|turn-end> --harness grok|opencode   (reads JSON on stdin)
+  mutate [files...]          run Stryker on changed files (TS/JS) and report surviving mutants
   hotspots [--since '3 months ago'] [--top N]   churn × complexity
   doctor                     diagnose parsing/resolution/coverage/runner setup
   statusline                 one line for a status bar (Grok [ui.status_line])
@@ -200,6 +201,26 @@ async function main() {
         const a = await analyze(root, store, config)
         const level = args[0] && args[0] !== '.' ? path.relative(root, path.resolve(process.cwd(), args[0])).split(path.sep).join('/') : ''
         out(diagram(a, { level, view, maxNodes: max }))
+        break
+      }
+      case 'mutate': {
+        const files = args.length ? args.map((f) => path.relative(root, path.resolve(process.cwd(), f)).split(path.sep).join('/')) : [...store.changedSinceBaseline()]
+        const ts = files.filter((f) => /\.[cm]?[jt]sx?$/.test(f))
+        const pj = existsSync(path.join(root, 'package.json')) ? readFileSync(path.join(root, 'package.json'), 'utf8') : ''
+        if (!ts.length) {
+          out('bmu mutate: no TypeScript/JavaScript files to mutate (Python/Elixir: run mutmut/muex yourself and point mutation.reports at a JSON report)')
+          break
+        }
+        if (!/@stryker-mutator\/core/.test(pj)) {
+          out('bmu mutate: Stryker is not installed. Add it with: npm i -D @stryker-mutator/core (plus the jest/vitest runner plugin)')
+          break
+        }
+        const { spawnSync } = await import('node:child_process')
+        process.stderr.write(`bmu: stryker on ${ts.length} file(s)…\n`)
+        spawnSync('npx', ['--no-install', 'stryker', 'run', '--mutate', ts.join(','), '--reporters', 'json,progress'], { cwd: root, stdio: ['ignore', 'inherit', 'inherit'] })
+        const a = await analyze(root, store, config)
+        const d = reconcile(store, a.findings, { mark: true })
+        out(hookMessage(d, 10) || 'bmu mutate: no new surviving mutants')
         break
       }
       case 'hotspots': {

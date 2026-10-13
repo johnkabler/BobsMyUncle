@@ -39,6 +39,10 @@ export interface BmuConfig {
     /** seconds of quiet before a background run */
     debounceSeconds: number
   }
+  mutation: {
+    /** mutation report files to ingest when they change (Stryker JSON or generic {mutants:[...]}) */
+    reports: string[]
+  }
   runners: Partial<Record<'typescript' | 'python' | 'elixir', RunnerConfig>>
   report: {
     hookMaxLines: number
@@ -64,6 +68,7 @@ export function defaultConfig(): BmuConfig {
     thresholds: { crap: 30, cc: 15, uncovered: true },
     rules: {},
     coverage: { reports: [...DEFAULT_COVERAGE_REPORTS], background: true, debounceSeconds: 20 },
+    mutation: { reports: ['reports/mutation/mutation.json', 'reports/mutation/mutation-report.json', 'mutation.json', '.bmu/mutation.json'] },
     runners: {},
     report: { hookMaxLines: 3, contextMaxTokens: 400 },
   }

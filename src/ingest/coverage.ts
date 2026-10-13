@@ -45,10 +45,10 @@ export function parseCoverage(text: string): CoverageReport {
 }
 
 /**
- * Map report paths to repo-relative files. Handles absolute paths from CI or Docker
+ * Build a mapper from report paths to repo-relative files. Handles absolute paths from CI or Docker
  * (`/app/lib/x.ex`, `/home/ci/work/repo/src/x.ts`) by longest-suffix match against known files.
  */
-export function mapReportPaths(report: CoverageReport, root: string, known: Iterable<string>): Map<string, LineHits> {
+export function pathMapper(root: string, known: Iterable<string>): (raw: string) => string | null {
   const knownSet = new Set(known)
   const bySuffix = new Map<string, string[]>()
   for (const k of knownSet) {
@@ -57,19 +57,22 @@ export function mapReportPaths(report: CoverageReport, root: string, known: Iter
     arr.push(k)
     bySuffix.set(base, arr)
   }
+  return (raw: string) => {
+    const norm = raw.split('\\').join('/')
+    if (knownSet.has(norm)) return norm
+    if (path.isAbsolute(norm) && norm.startsWith(root + '/') && knownSet.has(norm.slice(root.length + 1))) return norm.slice(root.length + 1)
+    if (knownSet.has(norm.replace(/^\.\//, ''))) return norm.replace(/^\.\//, '')
+    let best: string | null = null
+    for (const c of bySuffix.get(norm.split('/').pop()!) ?? []) if ((norm === c || norm.endsWith('/' + c)) && (!best || c.length > best.length)) best = c
+    return best
+  }
+}
+
+export function mapReportPaths(report: CoverageReport, root: string, known: Iterable<string>): Map<string, LineHits> {
+  const map = pathMapper(root, known)
   const out = new Map<string, LineHits>()
   for (const [raw, hits] of report) {
-    const norm = raw.split('\\').join('/')
-    let rel: string | null = null
-    if (knownSet.has(norm)) rel = norm
-    else if (path.isAbsolute(norm) && norm.startsWith(root + '/') && knownSet.has(norm.slice(root.length + 1))) rel = norm.slice(root.length + 1)
-    else if (knownSet.has(norm.replace(/^\.\//, ''))) rel = norm.replace(/^\.\//, '')
-    else {
-      const cands = bySuffix.get(norm.split('/').pop()!) ?? []
-      let best: string | null = null
-      for (const c of cands) if ((norm === c || norm.endsWith('/' + c)) && (!best || c.length > best.length)) best = c
-      rel = best
-    }
+    const rel = map(raw)
     if (!rel) continue
     const prev = out.get(rel)
     if (prev) for (const [l, h] of hits) prev.set(l, Math.max(prev.get(l) ?? 0, h))

@@ -120,6 +120,7 @@ export interface MemberMetrics {
   uncovered?: number[]
   crap?: number
   stale?: boolean
+  mutation?: { killed: number; survived: number; noCoverage: number; timeout: number; survivors: { line: number; mutator: string }[] }
 }
 
 export interface MemberNode extends Member {
