@@ -86,7 +86,20 @@ describe('pipeline: typescript fixture', () => {
     const core = diagram(a, { level: 'src', view: 'components' })
     expect(core).toMatch(/linkStyle/) // red dependency-rule violation edge core -> http
     expect(diagram(a, { level: 'src/core/helpers' })).toMatch(/classDiagram/)
+    // appending code keeps existing members' coverage fresh; editing a member makes only it stale
     store.close()
+    appendFileSync(path.join(root, 'src/core/application/order.service.ts'), '\nexport const later = 1\n')
+    const r2 = await run(root, false)
+    const fresh = r2.a.model.elements.get('src/core/application/order.service.ts#OrderService')!.members.find((x) => x.name === 'applyDiscount')!
+    expect(fresh.metrics.stale).toBeUndefined()
+    r2.store.close()
+    const src = readFileSync(path.join(root, 'src/core/application/order.service.ts'), 'utf8')
+    writeFileSync(path.join(root, 'src/core/application/order.service.ts'), src.replace("discount = 10", "discount = 11"))
+    const r3 = await run(root, false)
+    const ms = r3.a.model.elements.get('src/core/application/order.service.ts#OrderService')!.members
+    expect(ms.find((x) => x.name === 'applyDiscount')!.metrics.stale).toBe(true)
+    expect(ms.find((x) => x.name === 'helper')!.metrics.stale).toBeUndefined()
+    r3.store.close()
   })
 })
 

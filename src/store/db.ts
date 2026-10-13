@@ -22,6 +22,8 @@ export interface CoverageRow {
   hits: LineHits
   source: string
   measured_at: number
+  /** short hash per source line at measurement time (for member-level staleness) */
+  lines: string[] | null
 }
 
 export class Store {
@@ -49,6 +51,8 @@ export class Store {
       CREATE TABLE IF NOT EXISTS changed_files (path TEXT PRIMARY KEY, at INTEGER);
       CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, text TEXT);
     `)
+    const cols = (this.db.prepare('PRAGMA table_info(coverage)').all() as any[]).map((c) => c.name)
+    if (!cols.includes('lines')) this.db.exec('ALTER TABLE coverage ADD COLUMN lines TEXT')
     const v = this.getMeta('schema')
     if (!v) this.setMeta('schema', String(SCHEMA_VERSION))
   }
@@ -91,14 +95,14 @@ export class Store {
   }
 
   // ---- coverage ----
-  putCoverage(p: string, hash: string, hits: LineHits, source: string) {
+  putCoverage(p: string, hash: string, hits: LineHits, source: string, lines: string[] | null = null) {
     this.db
-      .prepare('INSERT INTO coverage(path,hash,hits,source,measured_at) VALUES(?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET hash=excluded.hash, hits=excluded.hits, source=excluded.source, measured_at=excluded.measured_at')
-      .run(p, hash, JSON.stringify([...hits]), source, Date.now())
+      .prepare('INSERT INTO coverage(path,hash,hits,source,measured_at,lines) VALUES(?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET hash=excluded.hash, hits=excluded.hits, source=excluded.source, measured_at=excluded.measured_at, lines=excluded.lines')
+      .run(p, hash, JSON.stringify([...hits]), source, Date.now(), lines ? JSON.stringify(lines) : null)
   }
   allCoverage(): Map<string, CoverageRow> {
     const rows = this.db.prepare('SELECT * FROM coverage').all() as any[]
-    return new Map(rows.map((r) => [r.path, { path: r.path, hash: r.hash, hits: new Map(JSON.parse(r.hits)), source: r.source, measured_at: r.measured_at }]))
+    return new Map(rows.map((r) => [r.path, { path: r.path, hash: r.hash, hits: new Map(JSON.parse(r.hits)), source: r.source, measured_at: r.measured_at, lines: r.lines ? JSON.parse(r.lines) : null }]))
   }
 
   // ---- findings ----

@@ -37,6 +37,15 @@ export interface Analysis {
 }
 
 export const sha1 = (s: string | Buffer) => createHash('sha1').update(s).digest('hex')
+export const lineHashes = (src: string) => src.split('\n').map((l) => createHash('md5').update(l).digest('base64').slice(0, 6))
+
+function readLines(root: string, file: string): string[] | null {
+  try {
+    return lineHashes(readFileSync(path.join(root, file), 'utf8'))
+  } catch {
+    return null
+  }
+}
 
 export function sourceFiles(root: string, config: BmuConfig): { all: string[]; sources: string[] } {
   const all = listFiles(root)
@@ -67,7 +76,7 @@ export function ingestReports(root: string, store: Store, config: BmuConfig, kno
     const mapped = mapReportPaths(report, root, known.keys())
     for (const [file, hits] of mapped) {
       if (restrict && !restrict.has(file)) continue
-      store.putCoverage(file, known.get(file)!, hits, rel)
+      store.putCoverage(file, known.get(file)!, hits, rel, readLines(root, file))
       n++
     }
     store.setMeta(key, stamp)
@@ -152,12 +161,21 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
     if (mod.isTest) continue
     const row = cov.get(mod.id)
     if (!row) continue
-    const stale = row.hash !== current.get(mod.id)
-    if (stale) staleFiles++
+    const fileStale = row.hash !== current.get(mod.id)
+    if (fileStale) staleFiles++
     else measuredFiles++
+    // member-level staleness: a member is fresh if its lines are unchanged at the same positions
+    const nowLines = fileStale && row.lines ? readLines(root, mod.id) : null
+    const memberStale = (start: number, end: number) => {
+      if (!fileStale) return false
+      if (!nowLines || !row.lines) return true
+      for (let l = start; l <= end; l++) if (row.lines[l - 1] !== nowLines[l - 1]) return true
+      return false
+    }
     for (const el of mod.elements) {
       for (const m of el.members) {
         if (m.kind === 'field' || m.kind === 'callback' || m.cc === undefined) continue
+        const stale = memberStale(m.start, m.end)
         const nested = el.members.filter((o) => o !== m && o.cc !== undefined && o.start >= m.start && o.end <= m.end && (o.start !== m.start || o.end !== m.end))
         const hits = nested.length ? new Map([...row.hits].filter(([l]) => !nested.some((o) => l >= o.start && l <= o.end))) : row.hits
         const sc = spanCoverage(hits, m.start, m.end)
