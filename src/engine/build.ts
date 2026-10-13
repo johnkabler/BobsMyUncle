@@ -4,150 +4,144 @@ import type { ImportResolver } from '../lang/resolve.js'
 
 const RESOLVABLE_KINDS = new Set(['class', 'interface', 'service', 'entity', 'controller', 'type', 'protocol', 'behaviour', 'struct', 'component', 'hook', 'store', 'enum', 'container', 'live_view', 'worker', 'genserver', 'machine'])
 
-/** Build the resolved model (modules, elements, edges) from per-file facts. */
-export function buildModel(root: string, facts: FileFacts[], resolvers: Record<Lang, ImportResolver>): Model {
-  const modules = new Map<string, ModuleNode>()
-  const elements = new Map<string, ElementNode>()
-  const byFile = new Map<string, FileFacts>()
-  for (const f of facts) {
-    byFile.set(f.path, f)
-    const dir = path.posix.dirname(f.path)
-    const mod: ModuleNode = { id: f.path, file: f.path, lang: f.lang, component: dir === '.' ? '' : dir, loc: f.loc, isTest: f.isTest, elements: [] }
-    for (const e of f.elements) {
-      const id = `${f.path}#${e.name}`
-      const node: ElementNode = {
-        ...e,
-        id,
-        module: f.path,
-        members: e.members.map((m) => ({ ...m, id: `${id}.${m.name}`, metrics: { cc: m.cc } })),
+type Resolved = { imp: RawImport; targets: string[] }
+
+const edgeKind = (imp: RawImport): Edge['kind'] => (imp.kind === 'reexport' || imp.kind === 'call' ? 'import' : imp.kind)
+
+/** Builds the resolved model (modules, elements, edges) from per-file facts. */
+class ModelBuilder {
+  readonly modules = new Map<string, ModuleNode>()
+  readonly elements = new Map<string, ElementNode>()
+  readonly byName = new Map<string, ElementNode[]>()
+  readonly moduleEdges: Edge[] = []
+  readonly elementEdges: Edge[] = []
+  private readonly resolved = new Map<string, Resolved[]>()
+  private readonly moduleEdgeKeys = new Set<string>()
+
+  constructor(private readonly facts: FileFacts[]) {}
+
+  addNodes() {
+    for (const f of this.facts) {
+      const dir = path.posix.dirname(f.path)
+      const mod: ModuleNode = { id: f.path, file: f.path, lang: f.lang, component: dir === '.' ? '' : dir, loc: f.loc, isTest: f.isTest, elements: [] }
+      for (const e of f.elements) {
+        const id = `${f.path}#${e.name}`
+        const node: ElementNode = { ...e, id, module: f.path, members: e.members.map((m) => ({ ...m, id: `${id}.${m.name}`, metrics: { cc: m.cc } })) }
+        mod.elements.push(node)
+        this.elements.set(id, node)
+        if (RESOLVABLE_KINDS.has(node.kind)) (this.byName.get(node.name) ?? this.byName.set(node.name, []).get(node.name)!).push(node)
       }
-      mod.elements.push(node)
-      elements.set(id, node)
+      this.modules.set(f.path, mod)
     }
-    modules.set(f.path, mod)
   }
 
-  // global name index for fallback resolution (DI tokens, Elixir module names)
-  const byName = new Map<string, ElementNode[]>()
-  for (const el of elements.values()) {
-    if (!RESOLVABLE_KINDS.has(el.kind)) continue
-    const arr = byName.get(el.name) ?? []
-    arr.push(el)
-    byName.set(el.name, arr)
-  }
-
-  const moduleEdges: Edge[] = []
-  const resolvedImports = new Map<string, { imp: RawImport; targets: string[] }[]>()
-  for (const f of facts) {
-    const r = resolvers[f.lang]
-    const list: { imp: RawImport; targets: string[] }[] = []
-    const seen = new Map<string, Edge>()
-    for (const imp of f.imports) {
-      const targets = r.resolve(f.path, imp)
-      list.push({ imp, targets })
-      for (const t of targets) {
-        if (t === f.path) continue
-        const kind = imp.kind === 'reexport' || imp.kind === 'call' ? 'import' : imp.kind
-        const prev = seen.get(t)
-        // strongest kind wins: import > compile-time > type-only
-        if (prev) {
-          if (prev.kind === 'type-only' && kind !== 'type-only') prev.kind = kind
-          continue
+  /** Resolve imports to module edges; the strongest kind wins (import > compile-time > type-only). */
+  addModuleEdges(resolvers: Record<Lang, ImportResolver>) {
+    for (const f of this.facts) {
+      const list: Resolved[] = []
+      const seen = new Map<string, Edge>()
+      for (const imp of f.imports) {
+        const targets = resolvers[f.lang].resolve(f.path, imp)
+        list.push({ imp, targets })
+        for (const t of targets) {
+          if (t === f.path) continue
+          const kind = edgeKind(imp)
+          const prev = seen.get(t)
+          if (prev) {
+            if (prev.kind === 'type-only' && kind !== 'type-only') prev.kind = kind
+            continue
+          }
+          const e: Edge = { from: f.path, to: t, kind, line: imp.line }
+          seen.set(t, e)
+          this.pushModuleEdge(e)
         }
-        const e: Edge = { from: f.path, to: t, kind, line: imp.line }
-        seen.set(t, e)
-        moduleEdges.push(e)
       }
+      this.resolved.set(f.path, list)
     }
-    resolvedImports.set(f.path, list)
   }
 
-  // --- element-level edges ---
-  const findInFile = (file: string, name: string, depth = 0): ElementNode | null => {
-    const local = elements.get(`${file}#${name}`)
-    if (local) return local
-    if (depth > 4) return null
-    // follow re-exports (barrels)
-    for (const { imp, targets } of resolvedImports.get(file) ?? []) {
-      if (imp.kind !== 'reexport') continue
-      if (!imp.names.includes('*') && !imp.names.includes(name)) continue
+  private pushModuleEdge(e: Edge) {
+    this.moduleEdges.push(e)
+    this.moduleEdgeKeys.add(e.from + '\0' + e.to)
+  }
+
+  /** Find an element by name in a file, following re-export barrels. */
+  findInFile(file: string, name: string, depth = 0): ElementNode | null {
+    const local = this.elements.get(`${file}#${name}`)
+    if (local || depth > 4) return local ?? null
+    for (const { imp, targets } of this.resolved.get(file) ?? []) {
+      if (imp.kind !== 'reexport' || (!imp.names.includes('*') && !imp.names.includes(name))) continue
       for (const t of targets) {
-        const hit = findInFile(t, name, depth + 1)
+        const hit = this.findInFile(t, name, depth + 1)
         if (hit) return hit
       }
     }
     return null
   }
 
-  const resolveName = (f: FileFacts, rawTarget: string): ElementNode | null => {
-    const target = rawTarget.replace(/^['"`]|['"`]$/g, '')
-    if (f.lang === 'elixir') {
-      for (const el of byName.get(target) ?? []) return el
-      return null
+  /** Resolve `name` (maybe `ns.Name`) through one import of the file. */
+  private viaImport({ imp, targets }: Resolved, head: string, last: string, qualified: boolean): ElementNode | null {
+    const aliased = imp.aliases?.[head]
+    const importedName = aliased ?? (imp.names.includes(head) ? head : null)
+    if (importedName === null && !imp.names.includes('*')) return null
+    for (const t of targets) {
+      if (t.startsWith('ext:')) continue
+      let hit: ElementNode | null = null
+      if (importedName === '*' || importedName === null) hit = this.findInFile(t, last) // namespace import / python module import
+      else if (importedName === 'default') {
+        const els = (this.modules.get(t)?.elements ?? []).filter((e) => e.kind !== 'module' && e.exported)
+        hit = els.find((e) => e.name === head) ?? els[0] ?? null
+      } else hit = this.findInFile(t, qualified ? last : importedName) ?? (qualified ? this.findInFile(t, last) : null)
+      if (hit) return hit
     }
-    const local = elements.get(`${f.path}#${target}`)
-    if (local) return local
-    const [head, ...rest] = target.split('.')
-    const last = target.split('.').pop()!
-    for (const { imp, targets } of resolvedImports.get(f.path) ?? []) {
-      const aliased = imp.aliases?.[head]
-      const importedName = aliased ?? (imp.names.includes(head) ? head : null)
-      if (importedName === null && !imp.names.includes('*')) continue
-      for (const t of targets) {
-        if (t.startsWith('ext:')) continue
-        if (importedName === '*' || (aliased === undefined && imp.names.includes('*') && importedName === null)) {
-          // namespace import: ns.Foo  /  python `import pkg.mod` then `pkg.mod.Foo`
-          const hit = findInFile(t, last)
-          if (hit) return hit
-          continue
-        }
-        if (importedName === 'default') {
-          const els = (modules.get(t)?.elements ?? []).filter((e) => e.kind !== 'module' && e.exported)
-          if (els.length) return els.find((e) => e.name === head) ?? els[0]
-          continue
-        }
-        if (importedName) {
-          const hit = findInFile(t, rest.length ? last : importedName)
-          if (hit) return hit
-          // python: `from pkg import mod` then `mod.Foo`
-          if (rest.length) {
-            const hit2 = findInFile(t, last)
-            if (hit2) return hit2
-          }
-        }
-      }
-    }
-    // unique global fallback (string DI tokens, Python module-qualified names)
-    const cands = byName.get(last)
-    if (cands && cands.length === 1 && cands[0].module !== f.path) return cands[0]
     return null
   }
 
-  const elementEdges: Edge[] = []
-  const edgeKeys = new Set<string>()
-  const moduleEdgeKeys = new Set(moduleEdges.map((e) => e.from + '\0' + e.to))
-  for (const f of facts) {
-    if (f.isTest) continue
-    for (const ref of f.refs) {
-      const from = elements.get(`${f.path}#${ref.from}`) ?? (f.elements.find((e) => e.kind === 'module') ? elements.get(`${f.path}#${f.elements.find((e) => e.kind === 'module')!.name}`) : undefined)
-      if (!from) continue
-      const to = resolveName(f, ref.target)
-      if (!to || to.id === from.id) continue
-      const key = `${from.id}|${to.id}|${ref.kind}`
-      if (edgeKeys.has(key)) continue
-      edgeKeys.add(key)
-      elementEdges.push({ from: from.id, to: to.id, kind: ref.kind, label: ref.label, line: ref.line })
-      // DI and other refs imply a module dependency even with string tokens
-      if (to.module !== f.path && !moduleEdgeKeys.has(f.path + '\0' + to.module)) {
-        if (ref.kind === 'injects' || ref.kind === 'implements' || ref.kind === 'inherits') {
-          moduleEdges.push({ from: f.path, to: to.module, kind: 'import', line: ref.line })
-          moduleEdgeKeys.add(f.path + '\0' + to.module)
-        }
+  resolveName(f: FileFacts, rawTarget: string): ElementNode | null {
+    const target = rawTarget.replace(/^['"`]|['"`]$/g, '')
+    if (f.lang === 'elixir') return this.byName.get(target)?.[0] ?? null
+    const local = this.elements.get(`${f.path}#${target}`)
+    if (local) return local
+    const parts = target.split('.')
+    const head = parts[0]
+    const last = parts[parts.length - 1]
+    for (const r of this.resolved.get(f.path) ?? []) {
+      const hit = this.viaImport(r, head, last, parts.length > 1)
+      if (hit) return hit
+    }
+    // unique global fallback (string DI tokens, Python module-qualified names)
+    const cands = this.byName.get(last)
+    return cands && cands.length === 1 && cands[0].module !== f.path ? cands[0] : null
+  }
+
+  addElementEdges() {
+    const keys = new Set<string>()
+    for (const f of this.facts) {
+      if (f.isTest) continue
+      const moduleEl = f.elements.find((e) => e.kind === 'module')
+      for (const ref of f.refs) {
+        const from = this.elements.get(`${f.path}#${ref.from}`) ?? (moduleEl ? this.elements.get(`${f.path}#${moduleEl.name}`) : undefined)
+        const to = from ? this.resolveName(f, ref.target) : null
+        if (!from || !to || to.id === from.id) continue
+        const key = `${from.id}|${to.id}|${ref.kind}`
+        if (keys.has(key)) continue
+        keys.add(key)
+        this.elementEdges.push({ from: from.id, to: to.id, kind: ref.kind, label: ref.label, line: ref.line })
+        // DI/inheritance refs imply a module dependency even with string tokens
+        const implied = ref.kind === 'injects' || ref.kind === 'implements' || ref.kind === 'inherits'
+        if (implied && to.module !== f.path && !this.moduleEdgeKeys.has(f.path + '\0' + to.module)) this.pushModuleEdge({ from: f.path, to: to.module, kind: 'import', line: ref.line })
       }
     }
   }
+}
 
-  return { root, modules, elements, moduleEdges, elementEdges }
+/** Build the resolved model (modules, elements, edges) from per-file facts. */
+export function buildModel(root: string, facts: FileFacts[], resolvers: Record<Lang, ImportResolver>): Model {
+  const b = new ModelBuilder(facts)
+  b.addNodes()
+  b.addModuleEdges(resolvers)
+  b.addElementEdges()
+  return { root, modules: b.modules, elements: b.elements, moduleEdges: b.moduleEdges, elementEdges: b.elementEdges }
 }
 
 const stem = (p: string) =>
