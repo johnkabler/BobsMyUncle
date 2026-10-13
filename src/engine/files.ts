@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { readdirSync, existsSync, readFileSync } from 'node:fs'
+import { readdirSync, existsSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import YAML from 'yaml'
 import { defaultConfig, mergeConfig, type BmuConfig } from '../core/config.js'
@@ -7,6 +7,11 @@ import { defaultConfig, mergeConfig, type BmuConfig } from '../core/config.js'
 /** Find the repo/worktree root: nearest dir with .git (file or dir), else cwd. */
 export function findRoot(start = process.cwd()): string {
   let dir = path.resolve(start)
+  try {
+    dir = realpathSync(dir)
+  } catch {
+    /* keep */
+  }
   for (;;) {
     if (existsSync(path.join(dir, '.git')) || existsSync(path.join(dir, 'bmu.config.yaml'))) return dir
     const parent = path.dirname(dir)

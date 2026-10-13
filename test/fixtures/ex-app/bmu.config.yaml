@@ -1,0 +1,6 @@
+rules:
+  layers:
+    - [lib/shop]
+    - [lib/shop_web]
+coverage:
+  background: false

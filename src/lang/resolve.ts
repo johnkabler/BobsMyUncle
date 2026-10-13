@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { ResolverFactory } from 'oxc-resolver'
 import YAML from 'yaml'
 import type { FileFacts, Lang, RawImport } from '../core/model.js'
@@ -73,6 +73,11 @@ export class TsResolver implements ImportResolver {
   private workspace: Map<string, WorkspacePkg>
   private cache = new Map<string, string[]>()
   constructor(private root: string, files: Iterable<string>) {
+    try {
+      this.root = realpathSync(root)
+    } catch {
+      /* keep */
+    }
     this.files = new Set(files)
     this.factory = new ResolverFactory({
       tsconfig: 'auto',

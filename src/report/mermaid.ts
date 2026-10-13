@@ -25,7 +25,15 @@ export interface DiagramOpts {
 }
 
 export function diagram(a: Analysis, opts: DiagramOpts = {}): string {
-  const level = (opts.level ?? '').replace(/^\.\/?/, '').replace(/\/+$/, '')
+  let level = (opts.level ?? '').replace(/^\.\/?/, '').replace(/\/+$/, '')
+  // descend through single-child directory chains (e.g. `src/` -> `src/app/`)
+  for (;;) {
+    const kids = new Set([...a.model.modules.values()].filter((m) => !m.isTest).map((m) => childOf(m.id, level)).filter(Boolean) as string[])
+    if (kids.size !== 1) break
+    const only = [...kids][0]
+    if (a.model.modules.has(only)) break
+    level = only
+  }
   const view = opts.view && opts.view !== 'auto' ? opts.view : autoView(a, level)
   return view === 'classes' ? classDiagram(a, level, opts.maxNodes ?? 40) : componentDiagram(a, level, opts.maxNodes ?? 40)
 }

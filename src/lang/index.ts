@@ -22,7 +22,11 @@ export const DEFAULT_EXCLUDES: RegExp[] = [
   /\.gen\.[cm]?[jt]sx?$/,
   /\.min\.js$/,
   /(^|\/)(vite|vitest|jest|webpack|rollup|babel|postcss|tailwind|eslint|prettier|panda|playwright|lint-staged|oxlint)\.config\.[cm]?[jt]s$/,
-  /(^|\/)priv\/static\//,
+  /(^|\/)priv\/(static|repo\/migrations)\//,
+  /(^|\/)(mix|\.formatter|\.credo|\.iex)\.exs$/,
+  /(^|\/)config\/[^/]+\.exs$/,
+  /(^|\/)(setup|noxfile|manage)\.py$/,
+  /(^|\/)migrations\/[^/]+\.py$/,
   /(^|\/)assets\/vendor\//,
 ]
 

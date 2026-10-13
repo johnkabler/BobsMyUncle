@@ -1,0 +1,7 @@
+rules:
+  layers:
+    - [src/app/domain]
+    - [src/app/application]
+    - [src/app/infrastructure, src/app/api]
+coverage:
+  background: false
