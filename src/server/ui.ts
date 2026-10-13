@@ -33,7 +33,7 @@ export const UI_HTML = /* html */ `<!doctype html>
 const mermaid = window.mermaid
 window.addEventListener('error', (e) => { document.getElementById('details').textContent = 'UI error: ' + e.message })
 window.addEventListener('unhandledrejection', (e) => { document.getElementById('details').textContent = 'UI error: ' + (e.reason && e.reason.message || e.reason) })
-mermaid.initialize({ startOnLoad:false, securityLevel:'loose', maxTextSize: 500000, flowchart:{ htmlLabels:true }, theme:'default' })
+mermaid.initialize({ startOnLoad:false, securityLevel:'loose', maxTextSize: 500000, flowchart:{ htmlLabels:true, useMaxWidth:false }, class:{ useMaxWidth:false }, theme:'default' })
 let level = new URLSearchParams(location.search).get('level') || ''
 const $ = (id) => document.getElementById(id)
 async function api(p){ const r = await fetch(p); return r.json() }

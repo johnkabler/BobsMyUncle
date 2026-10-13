@@ -40,7 +40,7 @@ export function hookMessage(delta: Delta, maxLines: number): string {
   const shown = lines.slice(0, maxLines)
   if (lines.length > maxLines) shown.push(`… +${lines.length - maxLines} more (run \`bmu findings --new\`)`)
   const bad = delta.fresh.length + delta.worse.length
-  const head = bad ? `bmu: ${bad} code-quality regression${bad > 1 ? 's' : ''} from your recent changes (report only, not blocking):` : 'bmu:'
+  const head = bad ? `bmu: ${bad} code-quality regression${bad > 1 ? 's' : ''} from your recent changes (report only, not blocking):` : 'bmu: fixed since your last edit:'
   return [head, ...shown.map((l) => '  ' + l), bad ? '  Fix if in scope, or `bmu ack <id> "<reason>"` if intentional. Details: `bmu explain <id>`.' : ''].filter(Boolean).join('\n')
 }
 

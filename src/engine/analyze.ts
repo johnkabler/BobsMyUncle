@@ -109,6 +109,12 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
     if (store.getMeta('extractor') !== null) store.db.exec("DELETE FROM meta WHERE key='baseline_at'")
     store.setMeta('extractor', EXTRACTOR_VERSION)
   }
+  // changed rules/thresholds create findings that are not regressions: re-baseline on next reconcile
+  const policy = sha1(JSON.stringify({ rules: config.rules, thresholds: config.thresholds, exclude: config.exclude, include: config.include }))
+  if (store.getMeta('policy') !== policy) {
+    if (store.getMeta('policy') !== null) store.db.exec("DELETE FROM meta WHERE key='baseline_at'")
+    store.setMeta('policy', policy)
+  }
   const { all, sources } = sourceFiles(root, config)
   const index = store.fileIndex()
   const firstScan = index.size === 0
@@ -271,7 +277,10 @@ export function reconcile(store: Store, findings: Finding[], opts: { mark: boole
         if (row.reported_value !== null || row.baseline_value === null) resolved.push(row)
       }
     }
-    if (firstRun) store.setMeta('baseline_at', String(now))
+    if (firstRun) {
+      store.db.exec("UPDATE findings SET baseline_value=value, reported_value=NULL WHERE status != 'resolved'")
+      store.setMeta('baseline_at', String(now))
+    }
     const fresh: FindingRow[] = []
     const worse: FindingRow[] = []
     const touched = store.changedSinceBaseline()
