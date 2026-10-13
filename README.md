@@ -21,6 +21,8 @@ bmu: 1 code-quality regression from your recent changes (report only, not blocki
   Fix if in scope, or `bmu ack <id> "<reason>"` if intentional. Details: `bmu explain <id>`.
 ```
 
+🎬 **Explainer video:** [video/bmu-explainer.mp4](video/bmu-explainer.mp4) (4:45) — Uncle Bob, clean code, the metrics, and how agents use bmu.
+
 ## Install
 
 Requires Node ≥ 22.5 (uses the built-in `node:sqlite`). No native build steps: parsing uses tree-sitter WASM.
