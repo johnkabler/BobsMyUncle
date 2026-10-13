@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { readFileSync, statSync, existsSync } from 'node:fs'
+import { readFileSync, statSync, existsSync, mkdirSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import type { BmuConfig } from '../core/config.js'
 import type { FileFacts, Model } from '../core/model.js'
@@ -67,7 +68,7 @@ export function fingerprint(root: string, config: BmuConfig): string {
   const { sources } = sourceFiles(root, config)
   const h = createHash('sha1')
   h.update(JSON.stringify(config))
-  for (const f of [...sources, ...config.coverage.reports]) {
+  for (const f of [...sources, ...config.coverage.reports, '.coverage', ...config.mutation.reports]) {
     try {
       const st = statSync(path.join(root, f))
       h.update(`${f}:${st.mtimeMs}:${st.size}\n`)
@@ -78,10 +79,32 @@ export function fingerprint(root: string, config: BmuConfig): string {
   return h.digest('hex')
 }
 
+/** coverage.py writes a binary `.coverage` file by default; convert it to LCOV when it changes. */
+function convertCoveragePy(root: string, store: Store): string | null {
+  const data = path.join(root, '.coverage')
+  if (!existsSync(data)) return null
+  const st = statSync(data)
+  const stamp = `${st.mtimeMs}:${st.size}`
+  const out = path.join(root, '.bmu', 'cov', 'coverage-py.lcov')
+  if (store.getMeta('covpy') === stamp && existsSync(out)) return '.bmu/cov/coverage-py.lcov'
+  const uv = existsSync(path.join(root, 'uv.lock'))
+  const cmd = uv ? ['uv', 'run', '--no-sync', 'coverage', 'lcov', '-i', '--data-file', data, '-o', out, '-q'] : ['python3', '-m', 'coverage', 'lcov', '-i', '--data-file', data, '-o', out, '-q']
+  try {
+    mkdirSync(path.dirname(out), { recursive: true })
+    execFileSync(cmd[0], cmd.slice(1), { cwd: root, stdio: 'ignore', timeout: 60_000 })
+    store.setMeta('covpy', stamp)
+    return '.bmu/cov/coverage-py.lcov'
+  } catch {
+    store.setMeta('covpy', stamp) // don't retry every scan
+    return null
+  }
+}
+
 /** Ingest coverage report files that changed since we last read them. Returns number of files updated. */
 export function ingestReports(root: string, store: Store, config: BmuConfig, known: Map<string, string>, extraReports: string[] = [], onlyFiles?: Set<string>): number {
   let n = 0
-  for (const rel of [...config.coverage.reports, ...extraReports]) {
+  const covpy = convertCoveragePy(root, store)
+  for (const rel of [...config.coverage.reports, ...(covpy ? [covpy] : []), ...extraReports]) {
     const restrict = onlyFiles && extraReports.includes(rel) ? onlyFiles : undefined
     const p = path.isAbsolute(rel) ? rel : path.join(root, rel)
     if (!existsSync(p)) continue
