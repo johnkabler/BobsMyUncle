@@ -86,6 +86,7 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
   }
   const { all, sources } = sourceFiles(root, config)
   const index = store.fileIndex()
+  const firstScan = index.size === 0
   const cached = new Map<string, FileFacts>()
   const needCached: string[] = []
   const changed: string[] = []
@@ -122,7 +123,7 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
       store.putFacts(ff, st.mtimeMs, st.size)
       facts.push(ff)
       parsed++
-      if (prev) changed.push(f)
+      if (prev || !firstScan) changed.push(f)
     } catch (e) {
       process.stderr.write(`bmu: failed to parse ${f}: ${(e as Error).message}\n`)
     }
@@ -132,6 +133,7 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
     for (const ff of store.allFacts()) if (want.has(ff.path)) cached.set(ff.path, ff)
     facts.push(...cached.values())
   }
+  if (changed.length && store.getMeta('baseline_at') !== null) store.markChanged(changed)
   const removed = [...index.keys()].filter((p) => !current.has(p))
   if (removed.length) store.deleteFiles(removed)
 
@@ -203,6 +205,8 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
   }
 }
 
+const MEMBER_RULES = new Set(['crap', 'complexity', 'uncovered', 'file-coverage'])
+
 export interface Delta {
   fresh: FindingRow[] // new since baseline
   worse: FindingRow[] // got worse than baseline / last report
@@ -235,8 +239,15 @@ export function reconcile(store: Store, findings: Finding[], opts: { mark: boole
     if (firstRun) store.setMeta('baseline_at', String(now))
     const fresh: FindingRow[] = []
     const worse: FindingRow[] = []
+    const touched = store.changedSinceBaseline()
     for (const f of findings) {
       const row = store.getFinding(f.id)!
+      // code-level findings only count as regressions in files changed since the baseline
+      // (a first coverage measurement of untouched code is pre-existing debt, not a regression)
+      if (MEMBER_RULES.has(f.rule) && !touched.has(f.file)) {
+        if (row.baseline_value === null) store.db.prepare('UPDATE findings SET baseline_value=? WHERE id=?').run(f.value, f.id)
+        continue
+      }
       if (row.status === 'acked' && (row.reported_value === null || row.value <= row.reported_value)) continue
       const floor = Math.max(row.baseline_value ?? -Infinity, row.reported_value ?? -Infinity)
       if (row.value <= floor) continue

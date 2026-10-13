@@ -125,6 +125,7 @@ export function buildModel(root: string, facts: FileFacts[], resolvers: Record<L
 
   const elementEdges: Edge[] = []
   const edgeKeys = new Set<string>()
+  const moduleEdgeKeys = new Set(moduleEdges.map((e) => e.from + '\0' + e.to))
   for (const f of facts) {
     if (f.isTest) continue
     for (const ref of f.refs) {
@@ -137,9 +138,10 @@ export function buildModel(root: string, facts: FileFacts[], resolvers: Record<L
       edgeKeys.add(key)
       elementEdges.push({ from: from.id, to: to.id, kind: ref.kind, label: ref.label, line: ref.line })
       // DI and other refs imply a module dependency even with string tokens
-      if (to.module !== f.path && !moduleEdges.some((e) => e.from === f.path && e.to === to.module)) {
+      if (to.module !== f.path && !moduleEdgeKeys.has(f.path + '\0' + to.module)) {
         if (ref.kind === 'injects' || ref.kind === 'implements' || ref.kind === 'inherits') {
           moduleEdges.push({ from: f.path, to: to.module, kind: 'import', line: ref.line })
+          moduleEdgeKeys.add(f.path + '\0' + to.module)
         }
       }
     }

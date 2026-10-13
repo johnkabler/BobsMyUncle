@@ -149,7 +149,7 @@ export function planRuns(root: string, config: BmuConfig, tests: string[], sourc
       } else {
         const script = [
           `out = "${relOut}/lcov.info"`,
-          `:cover.start(); :cover.import(~c"${relOut}/bmu.coverdata")`,
+          `Path.wildcard(Path.join(to_string(:code.root_dir()), "lib/tools-*/ebin")) |> Enum.each(&:code.add_path(to_charlist(&1))); :cover.start(); :cover.import(~c"${relOut}/bmu.coverdata")`,
           `body = for m <- :cover.imported_modules(), src = (try do to_string(m.module_info(:compile)[:source]) rescue _ -> nil end), src != nil, {:ok, lines} = :cover.analyse(m, :calls, :line), into: "" do`,
           `  da = lines |> Enum.filter(fn {{_, l}, _} -> l > 0 end) |> Enum.map(fn {{_, l}, c} -> "DA:#{l},#{c}\\n" end) |> Enum.join()`,
           `  "SF:#{src}\\n" <> da <> "end_of_record\\n"`,

@@ -46,6 +46,7 @@ export class Store {
         baseline_value REAL, reported_value REAL, ack_reason TEXT);
       CREATE TABLE IF NOT EXISTS snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, commit_sha TEXT, summary TEXT);
       CREATE TABLE IF NOT EXISTS commit_summaries (sha TEXT PRIMARY KEY, at INTEGER, summary TEXT);
+      CREATE TABLE IF NOT EXISTS changed_files (path TEXT PRIMARY KEY, at INTEGER);
       CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, text TEXT);
     `)
     const v = this.getMeta('schema')
@@ -140,7 +141,17 @@ export class Store {
   resetBaseline() {
     this.db.exec("UPDATE findings SET baseline_value=value, reported_value=NULL WHERE status IN ('open','acked')")
     this.db.exec("DELETE FROM findings WHERE status='resolved'")
+    this.db.exec('DELETE FROM changed_files')
     this.setMeta('baseline_at', String(Date.now()))
+  }
+
+  // ---- files changed since the baseline ----
+  markChanged(paths: string[]) {
+    const st = this.db.prepare('INSERT OR IGNORE INTO changed_files(path, at) VALUES(?, ?)')
+    for (const p of paths) st.run(p, Date.now())
+  }
+  changedSinceBaseline(): Set<string> {
+    return new Set((this.db.prepare('SELECT path FROM changed_files').all() as any[]).map((r) => r.path))
   }
 
   // ---- snapshots & notes ----
