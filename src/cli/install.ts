@@ -178,6 +178,7 @@ export default {
       add("diagram", "Mermaid UML slice for a directory or file (classes or components view).", obj({ path: { type: "string" }, view: { type: "string", enum: ["auto", "classes", "components"] } }), async (a) => (await bmu(["diagram", a.path || ".", "--view", a.view || "auto"], cwd)).out)
       add("ack", "Acknowledge a finding as intentional so it is not reported again.", obj({ id: { type: "string" }, reason: { type: "string" } }, ["id", "reason"]), async (a) => (await bmu(["ack", a.id, a.reason], cwd)).out)
       add("diff", "Structural regressions (cycles, dependency-rule violations, complexity) vs a git ref; default merge-base with main.", obj({ ref: { type: "string" } }), async (a) => (await bmu(["diff", ...(a.ref ? [a.ref] : [])], cwd)).out)
+      add("hotspots", "Files where git churn x complexity is highest.", obj({ since: { type: "string" } }), async (a) => (await bmu(["hotspots", ...(a.since ? ["--since", a.since] : [])], cwd)).out)
       add("coverage_run", "Run tests affected by recent changes with coverage, then report.", obj({ all: { type: "boolean" } }), async (a) => { const r = await bmu(["coverage", "run", ...(a.all ? ["--all"] : [])], cwd); return r.out + r.err })
     })
     return () => controller.abort()

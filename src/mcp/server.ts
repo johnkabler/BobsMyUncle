@@ -48,6 +48,12 @@ export const TOOLS: ToolDef[] = [
     args: (a) => ['diff', ...(a.ref ? [String(a.ref)] : [])],
   },
   {
+    name: 'bmu_hotspots',
+    description: 'Files where churn (git commits) × complexity is highest — where change risk concentrates.',
+    inputSchema: obj({ since: { type: 'string' }, top: { type: 'number' } }),
+    args: (a) => ['hotspots', ...(a.since ? ['--since', String(a.since)] : []), ...(a.top ? ['--top', String(a.top)] : [])],
+  },
+  {
     name: 'bmu_coverage_run',
     description: 'Run the tests affected by recent changes with coverage, ingest the results, and report new gaps.',
     inputSchema: obj({ all: { type: 'boolean' } }),
