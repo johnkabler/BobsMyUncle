@@ -7,7 +7,7 @@ const LAYER_NAMES: string[][] = [
   ['domain', 'domains', 'entities', 'model', 'models', 'core'],
   ['application', 'app', 'usecases', 'use_cases', 'services'],
   ['infrastructure', 'infra', 'adapters', 'persistence', 'repositories', 'gateways'],
-  ['api', 'http', 'web', 'controllers', 'routes', 'interfaces', 'presentation', 'cli', 'ui'],
+  ['api', 'http', 'web', 'controllers', 'routes', 'interfaces', 'presentation', 'cli', 'ui', 'server', 'handlers', 'endpoints', 'views', 'graphql', 'resolvers'],
 ]
 
 const SKIP = new Set(['node_modules', '.git', 'dist', 'build', '_build', 'deps', '.venv', 'venv', '__pycache__', '.bmu', 'coverage', 'cover', 'test', 'tests', 'spec'])
