@@ -3,7 +3,7 @@ import { readFileSync, statSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import type { BmuConfig } from '../core/config.js'
 import type { FileFacts, Model } from '../core/model.js'
-import { computeFindings, bySeverity, type Finding } from '../core/findings.js'
+import { computeFindings, bySeverity, stabilizeCycleIds, type Finding } from '../core/findings.js'
 import { componentMetrics, type ComponentMetrics } from '../core/graph.js'
 import { extract, langOf, DEFAULT_EXCLUDES, EXTRACTOR_VERSION } from '../lang/index.js'
 import { makeResolvers } from '../lang/resolve.js'
@@ -177,6 +177,7 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
   }
 
   const { findings, cycles, edges } = computeFindings(model, config)
+  stabilizeCycleIds(findings, store.allFindings().filter((r) => r.rule === 'cycle' && r.status !== 'resolved'))
   findings.sort(bySeverity)
   const byLang: Record<string, number> = {}
   for (const m of model.modules.values()) if (!m.isTest) byLang[m.lang] = (byLang[m.lang] ?? 0) + 1

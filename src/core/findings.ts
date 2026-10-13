@@ -90,10 +90,12 @@ export function computeFindings(model: Model, config: BmuConfig): { findings: Fi
 
   const edges = projectEdges(model, config.rules.includeTypeOnly)
   const nodes = [...model.modules.values()].filter((m) => !m.isTest).map((m) => m.id)
-  const cycles = findCycles(nodes, edges)
+  // Elixir: runtime calls between modules are normal; only compile-time cycles (use/import/require) hurt.
+  const cycleEdges = edges.filter((e) => !(model.modules.get(e.from)?.lang === 'elixir' && e.kind !== 'compile-time'))
+  const cycles = findCycles(nodes, cycleEdges)
   for (const comp of cycles) {
     const subject = comp.join('|')
-    const p = cyclePath(comp, edges)
+    const p = cyclePath(comp, cycleEdges)
     out.push({
       id: findingId('cycle', subject),
       rule: 'cycle',
@@ -101,7 +103,7 @@ export function computeFindings(model: Model, config: BmuConfig): { findings: Fi
       file: comp[0],
       value: comp.length,
       severity: 'high',
-      message: `import cycle (${comp.length} modules): ${p.join(' → ')}`,
+      message: `import cycle (${comp.length} modules): ${p.length <= 8 ? p.join(' → ') : [...p.slice(0, 6), '…', p[p.length - 1]].join(' → ')}`,
     })
   }
 
@@ -155,3 +157,39 @@ export function computeFindings(model: Model, config: BmuConfig): { findings: Fi
 
 const SEV = { high: 0, medium: 1, low: 2 }
 export const bySeverity = (a: Finding, b: Finding) => SEV[a.severity] - SEV[b.severity] || b.value - a.value
+
+/**
+ * Keep cycle finding ids stable as strongly-connected components grow or shrink: a new SCC that
+ * mostly overlaps a previously known cycle inherits its id (so growth reads as "worse", not
+ * "resolved + new").
+ */
+export function stabilizeCycleIds(findings: Finding[], previous: { id: string; subject: string }[]): Finding[] {
+  const prev = previous.map((p) => ({ id: p.id, members: new Set(p.subject.split('|')) }))
+  const used = new Set<string>()
+  for (const f of findings) {
+    if (f.rule !== 'cycle') continue
+    const members = f.subject.split('|')
+    if (prev.some((p) => p.id === f.id)) {
+      used.add(f.id)
+      continue
+    }
+    let best: { id: string; members: Set<string> } | null = null
+    let bestScore = 0
+    for (const p of prev) {
+      if (used.has(p.id)) continue
+      const overlap = members.filter((m) => p.members.has(m)).length
+      const score = overlap / Math.min(members.length, p.members.size)
+      if (score > bestScore) {
+        best = p
+        bestScore = score
+      }
+    }
+    if (best && bestScore >= 0.5) {
+      used.add(best.id)
+      const added = members.filter((m) => !best!.members.has(m))
+      f.id = best.id
+      if (added.length && added.length <= 3) f.message += ` (new in cycle: ${added.join(', ')})`
+    }
+  }
+  return findings
+}
