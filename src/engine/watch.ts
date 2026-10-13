@@ -72,7 +72,7 @@ export async function watch(root: string, store: Store, config: BmuConfig, out: 
   fsWatch(root, { recursive: true }, (_ev, file) => {
     if (!file) return
     const f = file.toString().split('\\').join('/')
-    if (coverageReports.has(f)) return schedule()
+    if (coverageReports.has(f) || f === '.coverage') return schedule()
     if (IGNORE.test(f) || !langOf(f) || DEFAULT_EXCLUDES.some((r) => r.test(f))) return
     schedule()
   })
