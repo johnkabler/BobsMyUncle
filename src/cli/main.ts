@@ -13,6 +13,7 @@ import { explain } from '../report/explain.js'
 import { startServer } from '../server/http.js'
 import { watch } from '../engine/watch.js'
 import { initConfig } from '../engine/init.js'
+import { findingsAt, defaultBase, structuralFindings, diffFindings } from '../engine/baseline.js'
 import { existsSync } from 'node:fs'
 
 const HELP = `bmu — live UML + code-quality monitor for coding agents
@@ -25,6 +26,7 @@ Usage: bmu <command> [options]
   findings [--new|--all] [--json]
   explain <id|file|Element>  members, metrics, dependencies
   diagram [path] [--view auto|classes|components] [--max N]   Mermaid UML
+  diff [ref]                 structural changes vs a git ref (default: merge-base with main): new cycles, rule violations, complexity
   ack <id> <reason>          acknowledge a finding (not reported again unless worse)
   baseline                   accept current findings as the baseline
   coverage run [--all] [files...]   run affected tests with coverage
@@ -187,6 +189,22 @@ async function main() {
         const a = await analyze(root, store, config)
         const level = args[0] && args[0] !== '.' ? path.relative(root, path.resolve(process.cwd(), args[0])).split(path.sep).join('/') : ''
         out(diagram(a, { level, view, maxNodes: max }))
+        break
+      }
+      case 'diff': {
+        const ref = args[0] ?? defaultBase(root)
+        const base = await findingsAt(root, store, config, ref, (s) => process.stderr.write(s + '\n'))
+        const a = await analyze(root, store, config)
+        const d = diffFindings(base.findings, structuralFindings(a), base.sha)
+        if (json) {
+          out(JSON.stringify(d, null, 2))
+          break
+        }
+        const lines = [`bmu diff vs ${args[0] ?? 'merge-base'} (${base.sha.slice(0, 8)}): ${d.added.length} new, ${d.worse.length} worse, ${d.fixed.length} fixed`]
+        for (const f of d.added) lines.push(`  + ${f.id} ${f.message}`)
+        for (const w of d.worse) lines.push(`  ▲ ${w.f.id} ${w.f.message} (was ${w.was})`)
+        for (const f of d.fixed.slice(0, 20)) lines.push(`  ✓ ${f.id} ${f.message}`)
+        out(lines.join('\n'))
         break
       }
       case 'ack': {

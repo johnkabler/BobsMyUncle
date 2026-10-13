@@ -145,3 +145,25 @@ describe('init inference', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 })
+
+import { execFileSync } from 'node:child_process'
+import { findingsAt, structuralFindings, diffFindings } from '../src/engine/baseline.js'
+describe('diff vs git ref', () => {
+  it('reports structural findings added since a commit', async () => {
+    const root = copyFixture('ts-app')
+    const g = (...a: string[]) => execFileSync('git', a, { cwd: root, stdio: 'ignore' })
+    g('init', '-q')
+    g('-c', 'user.email=t@t', '-c', 'user.name=t', 'add', '-A')
+    g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base')
+    appendFileSync(path.join(root, 'src/core/domains/orders/order.repository.ts'), '\nimport { routes } from "@http/orders.controller"\nexport const n = routes.length\n')
+    const { store, config, a } = await run(root, false)
+    const base = await findingsAt(root, store, config, 'HEAD')
+    const d = diffFindings(base.findings, structuralFindings(a), base.sha)
+    expect(d.added.map((f) => f.rule)).toEqual(['layer'])
+    expect(d.fixed).toHaveLength(0)
+    // cached by sha the second time
+    expect(store.getCommitSummary(base.sha)).not.toBeNull()
+    store.close()
+    rmSync(root, { recursive: true, force: true })
+  })
+})
