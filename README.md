@@ -9,6 +9,7 @@ DI services, ORM entities, Elixir behaviours/schemas/LiveViews, and the dependen
 - **cyclomatic complexity** per function/method (React handlers and effects measured separately),
 - **test coverage** per member (LCOV / Cobertura from vitest, jest, pytest/coverage.py, ExUnit/ExCoveralls),
 - **CRAP** (`cc² × (1 − cov)³ + cc`), **newly uncovered lines**,
+- **mutation testing** results (Stryker's mutation-testing-report-schema, or a generic JSON list),
 - **import cycles**, **dependency-rule (layer) violations**, and Robert C. Martin's package metrics (I, A, D),
 
 and tells the agent — in-band, right after an edit — **only what got worse** because of its change.
@@ -75,6 +76,9 @@ bmu diff [ref]             structural regressions vs a git ref (default: merge-b
 bmu init [--shared]        write config with inferred layers/runners (.bmu/config.yaml)
 bmu doctor                 diagnose parsing/resolution/coverage setup
 bmu mcp                    MCP server over stdio (any MCP-capable harness)
+bmu propose add <name> "Core=src/a,src/b" "Web=src/web"   what-if grouping (inner first), evaluated without code changes
+bmu mutate [files]         Stryker on changed TS/JS files; surviving mutants become findings
+bmu hotspots               git churn × complexity
 ```
 
 ## Coverage
