@@ -90,6 +90,8 @@ export function installGrok(root: string, opts: { local: boolean }): string[] {
   }
   excludeLocally(root, ['.bmu/'])
   done.push('next: start grok here and run /hooks-trust once (project hooks need folder trust)')
+  done.push('optional status bar: add to ~/.grok/config.toml →  [ui.status_line] type = "command"  command = "bmu statusline"')
+  done.push('optional live events: ask grok to run `bmu watch` with its monitor tool (persistent)')
   return done
 }
 
@@ -128,8 +130,19 @@ export default {
   async setup(ctx) {
     const cwd = ctx.location.directory
     const contextFile = path.join(cwd, ".bmu", "context.md")
-    // establish the session baseline (existing debt is not reported as new)
+    // establish the baseline (existing debt is not reported as new) on load and for every new session here
     void bmu(["hook", "session-start", "--harness", "opencode"], cwd, "{}")
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        for await (const ev of ctx.event.subscribe({ signal: controller.signal })) {
+          const dir = ev?.location?.directory
+          if (dir && path.resolve(dir) !== path.resolve(cwd)) continue
+          if (ev.type === "session.created") void bmu(["hook", "session-start", "--harness", "opencode"], cwd, "{}")
+          else if (ev.type === "session.execution.succeeded") void bmu(["hook", "turn-end", "--harness", "opencode"], cwd, "{}")
+        }
+      } catch {}
+    })()
 
     await ctx.tool.hook("execute.after", async (event) => {
       if (event.status !== "completed" || !EDIT_TOOLS.test(event.tool)) return
@@ -156,8 +169,10 @@ export default {
       add("explain", "Explain a finding id (bmu-xxxxx), file path, or element name: members, metrics, dependencies.", obj({ target: { type: "string" } }, ["target"]), async (a) => (await bmu(["explain", a.target], cwd)).out)
       add("diagram", "Mermaid UML slice for a directory or file (classes or components view).", obj({ path: { type: "string" }, view: { type: "string", enum: ["auto", "classes", "components"] } }), async (a) => (await bmu(["diagram", a.path || ".", "--view", a.view || "auto"], cwd)).out)
       add("ack", "Acknowledge a finding as intentional so it is not reported again.", obj({ id: { type: "string" }, reason: { type: "string" } }, ["id", "reason"]), async (a) => (await bmu(["ack", a.id, a.reason], cwd)).out)
+      add("diff", "Structural regressions (cycles, dependency-rule violations, complexity) vs a git ref; default merge-base with main.", obj({ ref: { type: "string" } }), async (a) => (await bmu(["diff", ...(a.ref ? [a.ref] : [])], cwd)).out)
       add("coverage_run", "Run tests affected by recent changes with coverage, then report.", obj({ all: { type: "boolean" } }), async (a) => { const r = await bmu(["coverage", "run", ...(a.all ? ["--all"] : [])], cwd); return r.out + r.err })
     })
+    return () => controller.abort()
   },
 }
 `
