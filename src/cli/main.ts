@@ -12,6 +12,8 @@ import { installGrok, installOpencode } from './install.js'
 import { explain } from '../report/explain.js'
 import { startServer } from '../server/http.js'
 import { watch } from '../engine/watch.js'
+import { initConfig } from '../engine/init.js'
+import { existsSync } from 'node:fs'
 
 const HELP = `bmu — live UML + code-quality monitor for coding agents
 
@@ -28,6 +30,7 @@ Usage: bmu <command> [options]
   coverage run [--all] [files...]   run affected tests with coverage
   check [--new]              exit 1 if (new) high/medium findings exist (CI)
   remember <note>            durable team/architecture note shown in prime
+  init [--shared] [--force]  write a config with inferred layers/runners (.bmu/config.yaml, or bmu.config.yaml with --shared)
   install grok|opencode [--local|--shared]
   hook <session-start|post-tool|turn-end> --harness grok|opencode   (reads JSON on stdin)
   statusline                 one line for a status bar (Grok [ui.status_line])
@@ -100,6 +103,12 @@ async function main() {
   const json = flag(args, '--json')
   const out = (s: string) => process.stdout.write(s.endsWith('\n') ? s : s + '\n')
 
+  if (cmd === 'init') {
+    const r = initConfig(root, { shared: flag(args, '--shared'), force: flag(args, '--force') })
+    out([`✓ ${path.relative(root, r.file)}`, ...r.notes.map((n) => '  ' + n)].join('\n'))
+    return
+  }
+
   if (cmd === 'install') {
     const target = args.shift()
     const shared = flag(args, '--shared')
@@ -107,6 +116,10 @@ async function main() {
     const local = !shared
     const lines = target === 'grok' ? installGrok(root, { local }) : target === 'opencode' ? installOpencode(root, { local }) : null
     if (!lines) throw new Error('usage: bmu install grok|opencode [--local|--shared]')
+    if (!['bmu.config.yaml', 'bmu.config.yml', '.bmu/config.yaml'].some((f) => existsSync(path.join(root, f)))) {
+      const r = initConfig(root, { shared: shared })
+      lines.push(`wrote ${path.relative(root, r.file)}`, ...r.notes.map((n) => '  ' + n))
+    }
     out(lines.map((l) => '✓ ' + l).join('\n'))
     return
   }

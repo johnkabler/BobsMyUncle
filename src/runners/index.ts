@@ -60,10 +60,19 @@ function shellSplit(s: string): string[] {
   return out
 }
 
-function applyWrap(cmd: string[], rc?: RunnerConfig): string[] {
+function applyWrap(cmd: string[], rc?: RunnerConfig, env: Record<string, string> = {}): string[] {
   if (!rc?.wrap) return cmd
-  const quoted = cmd.map((a) => (/[\s"'$]/.test(a) ? `'${a.replace(/'/g, `'\\''`)}'` : a)).join(' ')
-  return ['sh', '-c', rc.wrap.includes('{cmd}') ? rc.wrap.replace('{cmd}', quoted) : `${rc.wrap} ${quoted}`]
+  const q = (a: string) => (/[\s"'$;&|<>(){}*]/.test(a) ? `'${a.replace(/'/g, `'\\''`)}'` : a)
+  // inside a container the command must run through a shell (it may contain `;`)
+  const inner = cmd[0] === 'sh' && cmd[1] === '-c' ? cmd[2] : cmd.map(q).join(' ')
+  const wrapped = `sh -c ${q(inner)}`
+  const envFlags = Object.entries(env)
+    .filter(([k]) => k !== 'CI')
+    .map(([k, v]) => `-e ${k}=${q(v)}`)
+    .join(' ')
+  let w = rc.wrap.replace('{env}', envFlags)
+  w = w.includes('{cmd}') ? w.replace('{cmd}', wrapped) : `${w} ${wrapped}`
+  return ['sh', '-c', w]
 }
 
 const rel = (from: string, to: string) => path.relative(from, to).split(path.sep).join('/') || '.'
@@ -163,7 +172,7 @@ export function planRuns(root: string, config: BmuConfig, tests: string[], sourc
     if (rc?.command) {
       cmd = shellSplit(rc.command.replace('{tests}', testArgs.join(' ')).replace('{files}', srcArgs.join(' ')).replace('{out}', outDir))
     }
-    cmd = applyWrap(cmd, rc)
+    cmd = applyWrap(cmd, rc, env)
     plans.push({ lang: g.lang, tool: g.tool, cwd: g.dir, cmd, env, outDir, reports, tests: g.tests, description: `${g.tool} (${g.tests.length} test file${g.tests.length > 1 ? 's' : ''}) in ${rel(root, g.dir)}` })
   }
   return plans

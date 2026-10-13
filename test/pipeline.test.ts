@@ -117,3 +117,18 @@ describe('pipeline: python + elixir fixtures', () => {
     rmSync(root, { recursive: true, force: true })
   })
 })
+
+import { inferLayers, inferPhoenixLayers, detectElixirWrap } from '../src/engine/init.js'
+describe('init inference', () => {
+  it('infers clean-architecture layers including sibling outer layers', () => {
+    expect(inferLayers('test/fixtures/ts-app')).toEqual([['src/core/domains'], ['src/core/application'], ['src/core/infra'], ['src/http', 'src/ui']])
+    expect(inferLayers('test/fixtures/py-app')).toEqual([['src/app/domain'], ['src/app/application'], ['src/app/infrastructure'], ['src/app/api']])
+  })
+  it('infers Phoenix layers and docker-wrapped mix test', () => {
+    expect(inferPhoenixLayers('test/fixtures/ex-app')).toEqual([['lib/shop'], ['lib/shop_web']])
+    const dir = mkdtempSync(path.join(tmpdir(), 'bmu-just-'))
+    writeFileSync(path.join(dir, 'justfile'), 'compose := "docker compose"\ntest *args:\n    {{compose}} exec app mix test {{args}}\n')
+    expect(detectElixirWrap(dir)).toBe('docker compose exec -T {env} app {cmd}')
+    rmSync(dir, { recursive: true, force: true })
+  })
+})
