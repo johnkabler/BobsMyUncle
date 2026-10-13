@@ -6,4 +6,9 @@ process.emitWarning = function (w, ...rest) {
   if (msg && /SQLite/.test(msg)) return
   return emit.call(process, w, ...rest)
 }
+const [maj, min] = process.versions.node.split('.').map(Number)
+if (maj < 22 || (maj === 22 && min < 5)) {
+  process.stderr.write(`bmu needs Node >= 22.5 (built-in node:sqlite); this is ${process.versions.node}\n`)
+  process.exit(1)
+}
 await import('../dist/cli/main.js')
