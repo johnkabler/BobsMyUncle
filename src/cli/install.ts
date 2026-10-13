@@ -131,7 +131,7 @@ function appendToResult(result, note) {
   return { ...result, content: note }
 }
 
-const text = (s) => ({ content: s.trim() || "(no output)" })
+const text = (s) => ({ content: (typeof s === "string" ? s : (s.out || s.err || "")).trim() || "(no output)" })
 
 export default {
   id: "bmu",
@@ -171,15 +171,15 @@ export default {
       editor.namespace({ name: "bmu", description: "bmu code-quality monitor: UML structure, complexity, coverage, CRAP, cycles and dependency rules for this repo." })
       const add = (name, description, input, run) =>
         editor.add({ name, description, input, options: { namespace: "bmu" }, execute: async (args) => text(await run(args || {})) })
-      add("prime", "Architecture brief + current findings for this repo. Call at the start of a task.", obj({}), async () => (await bmu(["prime"], cwd)).out)
-      add("status", "One-line health summary (coverage, cycles, findings).", obj({}), async () => (await bmu(["status"], cwd)).out)
-      add("findings", "List findings. new=true: only regressions since the session baseline.", obj({ new: { type: "boolean" } }), async (a) => (await bmu(["findings", ...(a.new ? ["--new"] : [])], cwd)).out)
-      add("explain", "Explain a finding id (bmu-xxxxx), file path, or element name: members, metrics, dependencies.", obj({ target: { type: "string" } }, ["target"]), async (a) => (await bmu(["explain", a.target], cwd)).out)
-      add("diagram", "Mermaid UML slice for a directory or file (classes or components view).", obj({ path: { type: "string" }, view: { type: "string", enum: ["auto", "classes", "components"] } }), async (a) => (await bmu(["diagram", a.path || ".", "--view", a.view || "auto"], cwd)).out)
-      add("ack", "Acknowledge a finding as intentional so it is not reported again.", obj({ id: { type: "string" }, reason: { type: "string" } }, ["id", "reason"]), async (a) => (await bmu(["ack", a.id, a.reason], cwd)).out)
-      add("diff", "Structural regressions (cycles, dependency-rule violations, complexity) vs a git ref; default merge-base with main.", obj({ ref: { type: "string" } }), async (a) => (await bmu(["diff", ...(a.ref ? [a.ref] : [])], cwd)).out)
-      add("propose", "Evaluate a what-if component grouping without changing code. components: ['Core=src/a,src/b', 'Web=src/web'] (inner/stable first).", obj({ name: { type: "string" }, components: { type: "array", items: { type: "string" } } }, ["name", "components"]), async (a) => (await bmu(["propose", "add", a.name, ...(a.components || [])], cwd)).out)
-      add("hotspots", "Files where git churn x complexity is highest.", obj({ since: { type: "string" } }), async (a) => (await bmu(["hotspots", ...(a.since ? ["--since", a.since] : [])], cwd)).out)
+      add("prime", "Architecture brief + current findings for this repo. Call at the start of a task.", obj({}), async () => await bmu(["prime"], cwd))
+      add("status", "One-line health summary (coverage, cycles, findings).", obj({}), async () => await bmu(["status"], cwd))
+      add("findings", "List findings. new=true: only regressions since the session baseline.", obj({ new: { type: "boolean" } }), async (a) => await bmu(["findings", ...(a.new ? ["--new"] : [])], cwd))
+      add("explain", "Explain a finding id (bmu-xxxxx), file path, or element name: members, metrics, dependencies.", obj({ target: { type: "string" } }, ["target"]), async (a) => await bmu(["explain", a.target], cwd))
+      add("diagram", "Mermaid UML slice for a directory or file (classes or components view).", obj({ path: { type: "string" }, view: { type: "string", enum: ["auto", "classes", "components"] } }), async (a) => await bmu(["diagram", a.path || ".", "--view", a.view || "auto"], cwd))
+      add("ack", "Acknowledge a finding as intentional so it is not reported again.", obj({ id: { type: "string" }, reason: { type: "string" } }, ["id", "reason"]), async (a) => await bmu(["ack", a.id, a.reason], cwd))
+      add("diff", "Structural regressions (cycles, dependency-rule violations, complexity) vs a git ref; default merge-base with main.", obj({ ref: { type: "string" } }), async (a) => await bmu(["diff", ...(a.ref ? [a.ref] : [])], cwd))
+      add("propose", "Evaluate a what-if component grouping without changing code. components: ['Core=src/a,src/b', 'Web=src/web'] (inner/stable first).", obj({ name: { type: "string" }, components: { type: "array", items: { type: "string" } } }, ["name", "components"]), async (a) => await bmu(["propose", "add", a.name, ...(a.components || [])], cwd))
+      add("hotspots", "Files where git churn x complexity is highest.", obj({ since: { type: "string" } }), async (a) => await bmu(["hotspots", ...(a.since ? ["--since", a.since] : [])], cwd))
       add("coverage_run", "Run tests affected by recent changes with coverage, then report.", obj({ all: { type: "boolean" } }), async (a) => { const r = await bmu(["coverage", "run", ...(a.all ? ["--all"] : [])], cwd); return r.out + r.err })
     })
     return () => controller.abort()

@@ -335,7 +335,7 @@ export function reconcile(store: Store, findings: Finding[], opts: { mark: boole
   const firstRun = store.getMeta('baseline_at') === null
   const before = new Map(store.allFindings().map((r) => [r.id, r]))
   const currentIds = new Set<string>()
-  store.db.exec('BEGIN')
+  store.db.exec('BEGIN IMMEDIATE')
   try {
     for (const f of findings) {
       currentIds.add(f.id)
