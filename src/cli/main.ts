@@ -10,6 +10,7 @@ import { hookMessage, prime, statusSummary, statusLine, findingLine, deltaLines,
 import { bySeverity } from '../core/findings.js'
 import { installGrok, installOpencode } from './install.js'
 import { explain } from '../report/explain.js'
+import { doctor } from '../report/doctor.js'
 import { startServer } from '../server/http.js'
 import { watch } from '../engine/watch.js'
 import { initConfig } from '../engine/init.js'
@@ -35,6 +36,7 @@ Usage: bmu <command> [options]
   init [--shared] [--force]  write a config with inferred layers/runners (.bmu/config.yaml, or bmu.config.yaml with --shared)
   install grok|opencode [--local|--shared]
   hook <session-start|post-tool|turn-end> --harness grok|opencode   (reads JSON on stdin)
+  doctor                     diagnose parsing/resolution/coverage/runner setup
   statusline                 one line for a status bar (Grok [ui.status_line])
   watch                      watch files; print regressions as they happen (also for Grok's monitor tool)
   serve [--port N]           live browser viewer
@@ -189,6 +191,11 @@ async function main() {
         const a = await analyze(root, store, config)
         const level = args[0] && args[0] !== '.' ? path.relative(root, path.resolve(process.cwd(), args[0])).split(path.sep).join('/') : ''
         out(diagram(a, { level, view, maxNodes: max }))
+        break
+      }
+      case 'doctor': {
+        const a = await analyze(root, store, config)
+        out(doctor(a, store))
         break
       }
       case 'diff': {

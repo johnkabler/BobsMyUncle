@@ -4,7 +4,7 @@ import { extractPython } from './python.js'
 import { extractElixir } from './elixir.js'
 
 /** Bump whenever extractor output changes so cached facts are re-parsed. */
-export const EXTRACTOR_VERSION = '3'
+export const EXTRACTOR_VERSION = '4'
 
 export function langOf(file: string): Lang | null {
   if (/\.d\.[cm]?ts$/.test(file)) return null

@@ -509,6 +509,19 @@ export async function extractTypeScript(relPath: string, source: string, hash: s
     }
   }
 
+  // recover imports the parser lost inside ERROR regions (e.g. `importOriginal<typeof import('x')>()` in TSX)
+  if (root.hasError) {
+    const have = new Set(ctx.imports.map((i) => i.spec))
+    const re = /^\s*(import|export)\s+(type\s+)?(?:[^'";]*?\sfrom\s*)?['"]([^'"]+)['"]/gm
+    for (const m of source.matchAll(re)) {
+      const spec = m[3]
+      if (have.has(spec)) continue
+      have.add(spec)
+      const lineNo = source.slice(0, m.index).split('\n').length
+      ctx.imports.push({ spec, names: ['*'], kind: m[2] ? 'type-only' : m[1] === 'export' ? 'reexport' : 'import', line: lineNo })
+    }
+  }
+
   const base = relPath.split('/').pop()!.replace(/\.[^.]+$/, '')
   const elements = ctx.elements
   if (ctx.moduleMembers.length || elements.length === 0) {
