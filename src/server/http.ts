@@ -11,6 +11,7 @@ import { explain } from '../report/explain.js'
 import { statusSummary } from '../report/format.js'
 import { bySeverity } from '../core/findings.js'
 import { UI_HTML } from './ui.js'
+import { proposalDiagram, proposalReport } from '../report/proposal.js'
 
 /** Stable per-worktree port in 47000-47999 unless overridden. */
 export function defaultPort(root: string): number {
@@ -59,9 +60,13 @@ export async function startServer(root: string, store: Store, config: BmuConfig,
         res.writeHead(404)
         res.end()
       }
-    } else if (url.pathname === '/api/state') json(state())
+    } else if (url.pathname === '/api/proposals') json(config.proposals.map((p) => p.name))
+    else if (url.pathname === '/api/state') json(state())
     else if (url.pathname === '/api/diagram') {
       if (!latest) return json({ mermaid: '' })
+      const prop = url.searchParams.get('proposal')
+      const p = prop ? config.proposals.find((x) => x.name === prop) : undefined
+      if (p) return json({ mermaid: proposalDiagram(latest, p), report: proposalReport(latest, p) })
       const view = (url.searchParams.get('view') ?? 'auto') as 'auto' | 'classes' | 'components'
       json({ mermaid: diagram(latest, { level: url.searchParams.get('level') ?? '', view, maxNodes: Number(url.searchParams.get('max') ?? 60), interactive: true }) })
     } else if (url.pathname === '/api/explain') {

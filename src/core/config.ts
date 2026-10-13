@@ -44,6 +44,8 @@ export interface BmuConfig {
     reports: string[]
   }
   runners: Partial<Record<'typescript' | 'python' | 'elixir', RunnerConfig>>
+  /** what-if component groupings (not instantiated in code); components inner-first */
+  proposals: { name: string; components: { name: string; paths: string[] }[] }[]
   report: {
     hookMaxLines: number
     contextMaxTokens: number
@@ -70,6 +72,7 @@ export function defaultConfig(): BmuConfig {
     coverage: { reports: [...DEFAULT_COVERAGE_REPORTS], background: true, debounceSeconds: 20 },
     mutation: { reports: ['reports/mutation/mutation.json', 'reports/mutation/mutation-report.json', 'mutation.json', '.bmu/mutation.json'] },
     runners: {},
+    proposals: [],
     report: { hookMaxLines: 3, contextMaxTokens: 400 },
   }
 }

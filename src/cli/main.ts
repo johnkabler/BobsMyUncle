@@ -12,6 +12,8 @@ import { installGrok, installOpencode } from './install.js'
 import { explain } from '../report/explain.js'
 import { doctor } from '../report/doctor.js'
 import { hotspots } from '../report/hotspots.js'
+import { proposalDiagram, proposalReport } from '../report/proposal.js'
+import YAML from 'yaml'
 import { startServer } from '../server/http.js'
 import { watch } from '../engine/watch.js'
 import { initConfig } from '../engine/init.js'
@@ -38,6 +40,7 @@ Usage: bmu <command> [options]
   init [--shared] [--force]  write a config with inferred layers/runners (.bmu/config.yaml, or bmu.config.yaml with --shared)
   install grok|opencode [--local|--shared]
   hook <session-start|post-tool|turn-end> --harness grok|opencode   (reads JSON on stdin)
+  propose list|add|show|rm  what-if component groupings (e.g. by Common Closure Principle), evaluated without changing code
   mutate [files...]          run Stryker on changed files (TS/JS) and report surviving mutants
   hotspots [--since '3 months ago'] [--top N]   churn × complexity
   doctor                     diagnose parsing/resolution/coverage/runner setup
@@ -221,6 +224,40 @@ async function main() {
         const a = await analyze(root, store, config)
         const d = reconcile(store, a.findings, { mark: true })
         out(hookMessage(d, 10) || 'bmu mutate: no new surviving mutants')
+        break
+      }
+      case 'propose': {
+        const sub = args.shift() ?? 'list'
+        const local = path.join(root, '.bmu', 'config.yaml')
+        const readLocal = () => (existsSync(local) ? YAML.parse(readFileSync(local, 'utf8')) ?? {} : {})
+        if (sub === 'list') {
+          out(config.proposals.length ? config.proposals.map((p) => `${p.name}: ${p.components.map((c) => c.name).join(' ← ')}`).join('\n') : 'no proposals (bmu propose add <name> "Core=src/a,src/b" "Web=src/web")')
+        } else if (sub === 'add') {
+          const name = args.shift()
+          if (!name || !args.length) throw new Error('usage: bmu propose add <name> "Comp=path,path" ... (inner/stable components first)')
+          const components = args.map((spec) => {
+            const [cname, paths] = spec.split('=')
+            return { name: cname.trim(), paths: (paths ?? '').split(',').map((x) => x.trim()).filter(Boolean) }
+          })
+          const doc = readLocal()
+          doc.proposals = [...(doc.proposals ?? []).filter((p: any) => p.name !== name), { name, components }]
+          mkdirSync(path.dirname(local), { recursive: true })
+          writeFileSync(local, YAML.stringify(doc))
+          const a = await analyze(root, store, loadConfig(root))
+          out(proposalReport(a, { name, components }))
+        } else if (sub === 'rm') {
+          const name = args.shift()
+          const doc = readLocal()
+          doc.proposals = (doc.proposals ?? []).filter((p: any) => p.name !== name)
+          writeFileSync(local, YAML.stringify(doc))
+          out(`removed proposal ${name}`)
+        } else if (sub === 'show') {
+          const name = args.shift()
+          const p = config.proposals.find((x) => x.name === name)
+          if (!p) throw new Error(`unknown proposal ${name}`)
+          const a = await analyze(root, store, config)
+          out(proposalReport(a, p) + '\n\n' + proposalDiagram(a, p))
+        } else throw new Error('usage: bmu propose list|add|show|rm')
         break
       }
       case 'hotspots': {

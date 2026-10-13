@@ -48,6 +48,12 @@ export const TOOLS: ToolDef[] = [
     args: (a) => ['diff', ...(a.ref ? [String(a.ref)] : [])],
   },
   {
+    name: 'bmu_propose',
+    description: 'Evaluate a what-if component grouping without changing code. components: ["Core=src/a,src/b", "Web=src/web"] (inner/stable first). Reports rule violations and component cycles under that grouping.',
+    inputSchema: obj({ name: { type: 'string' }, components: { type: 'array', items: { type: 'string' } } }, ['name', 'components']),
+    args: (a) => ['propose', 'add', String(a.name), ...(a.components ?? []).map(String)],
+  },
+  {
     name: 'bmu_hotspots',
     description: 'Files where churn (git commits) × complexity is highest — where change risk concentrates.',
     inputSchema: obj({ since: { type: 'string' }, top: { type: 'number' } }),

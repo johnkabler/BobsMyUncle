@@ -168,3 +168,19 @@ describe('diff vs git ref', () => {
     rmSync(root, { recursive: true, force: true })
   })
 })
+
+import { evaluateProposal, proposalDiagram } from '../src/report/proposal.js'
+describe('proposals', () => {
+  it('evaluates a what-if grouping without touching code', async () => {
+    const root = copyFixture('ts-app')
+    const { a, store } = await run(root, false)
+    const p = { name: 'ccp', components: [{ name: 'Domain', paths: ['src/core/domains', 'src/core/helpers'] }, { name: 'App', paths: ['src/core/application'] }, { name: 'Edge', paths: ['src/core/infra', 'src/http', 'src/ui'] }] }
+    const ev = evaluateProposal(a, p)
+    expect(ev.violations.map((v) => `${v.from}->${v.to}`)).toEqual(['Domain->Edge'])
+    expect(ev.cycles).toHaveLength(1)
+    expect(ev.unassigned).toEqual(['packages/kit/src/button.tsx'])
+    expect(proposalDiagram(a, p)).toMatch(/PROPOSAL "ccp"/)
+    store.close()
+    rmSync(root, { recursive: true, force: true })
+  })
+})

@@ -20,6 +20,7 @@ export const UI_HTML = /* html */ `<!doctype html>
 <body>
 <header><b>bmu</b><span id="crumbs"></span>
   <select id="view"><option value="auto">auto</option><option value="components">components</option><option value="classes">classes</option></select>
+  <select id="proposal"><option value="">real code</option></select>
   <span id="summary">loading…</span></header>
 <main id="canvas"></main>
 <aside>
@@ -49,7 +50,9 @@ let seq = 0
 async function render(){
   crumbs()
   const view = $('view').value
-  const { mermaid: src } = await api('/api/diagram?level='+encodeURIComponent(level)+'&view='+view)
+  const prop = $('proposal').value
+  const { mermaid: src, report } = await api('/api/diagram?level='+encodeURIComponent(level)+'&view='+view+(prop ? '&proposal='+encodeURIComponent(prop) : ''))
+  if (report) $('details').textContent = report
   if (!src) { $('canvas').textContent = 'waiting for first scan…'; return }
   $('canvas').textContent = 'rendering…'
   const withClicks = src
@@ -74,7 +77,8 @@ async function refreshState(){
     '<div class="f '+f.severity+'" data-id="'+f.id+'"><span class="id">'+f.id+'</span>'+(f.isNew?'<span class="new">NEW</span>':'')+(f.status==='acked'?' <span class="id">(acked)</span>':'')+'<br>'+f.message.replace(/</g,'&lt;')+'</div>').join('')
   $('findings').querySelectorAll('.f').forEach(el => el.onclick = async () => { const { text } = await api('/api/explain?target='+el.dataset.id); $('details').textContent = text })
 }
-$('view').onchange = render; $('onlyNew').onchange = refreshState
+$('view').onchange = render; $('onlyNew').onchange = refreshState; $('proposal').onchange = render
+api('/api/proposals').then(ps => { for (const p of ps) { const o = document.createElement('option'); o.value = p; o.textContent = 'proposal: ' + p; $('proposal').append(o) } })
 const es = new URLSearchParams(location.search).has('nolive') ? null : new EventSource('/events')
 es?.addEventListener('update', (e) => { const d = JSON.parse(e.data); for (const l of d.lines) { const div = document.createElement('div'); div.textContent = new Date().toLocaleTimeString()+' '+l; $('log').prepend(div) } refreshState(); render() })
 refreshState(); render()
