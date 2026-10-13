@@ -24,6 +24,7 @@
 ## Observed agent behaviour (real sessions)
 - Grok on the TS fixture: ran `bmu prime` unprompted (from `.grok/rules/bmu.md`), got the dependency-rule note after its edit and acked it as intentional.
 - OpenCode on the TS fixture: read the dependency rule from the injected context and avoided the violation entirely; when forced, the note was appended to the edit result.
+- Grok on Precogs (Elixir/Phoenix): adding `PrecogWeb.Endpoint.url()` to `lib/precog/llm.ex` produced the dependency-rule note (`lib/precog → lib/precog_web`); the agent acked it, noting the same edge already exists in `application.ex` (baselined).
 - Grok on buildwithai-api: after adding `clamp()`, bmu reported newly uncovered lines and the agent went on to write tests for them (it then hit a doppler-env problem in background runs, which led to the error-surfacing fix above).
 
 ## Findings about the reference repos
@@ -43,7 +44,9 @@
 
 ## Local setup done on this machine
 - `npm link` → `bmu` is on PATH (`~/.nvm/versions/node/v22.15.0/bin/bmu`).
-- Reference repos cloned (shallow) to `~/projects/bmu-ref/` with `.bmu/` state; e2e sandboxes `~/projects/bmu-ref/e2e-ts` (Grok, added to `~/.grok/trusted_folders.toml`) and `e2e-oc` (OpenCode).
+- Reference repos cloned (shallow) to `~/projects/bmu-ref/` with `.bmu/` state and local-only bmu installs; e2e sandboxes `~/projects/bmu-ref/e2e-ts` (Grok) and `e2e-oc` (OpenCode).
+- `~/.grok/trusted_folders.toml` got entries for `~/projects/bmu-ref/e2e-ts`, `buildwithai-api` and `Precogs` (needed for headless Grok runs). Remove them if you like.
+- `ai-middleware` clone has `node_modules` (installed with `--ignore-scripts`, cache in a temp dir because `~/.npm/_cacache` has root-owned files — `sudo chown -R $(whoami) ~/.npm` fixes that).
 - Nothing was installed into the real work repos and nothing was pushed anywhere except this personal repo.
 
 ## Next ideas
