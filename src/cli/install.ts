@@ -72,7 +72,7 @@ export function excludeLocally(root: string, entries: string[]) {
 export function grokHooksJson(cmd: string) {
   return {
     hooks: {
-      SessionStart: [{ hooks: [{ type: 'command', command: `${cmd} hook session-start --harness grok`, timeout: 30 }] }],
+      SessionStart: [{ matcher: 'startup|clear', hooks: [{ type: 'command', command: `${cmd} hook session-start --harness grok`, timeout: 30 }] }],
       PostToolUse: [{ matcher: 'Edit|Write|MultiEdit|Bash', hooks: [{ type: 'command', command: `${cmd} hook post-tool --harness grok`, timeout: 60 }] }],
       Stop: [{ hooks: [{ type: 'command', command: `${cmd} hook turn-end --harness grok`, timeout: 10 }] }],
     },
