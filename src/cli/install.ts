@@ -24,7 +24,7 @@ export const AGENTS_SNIPPET = `${AGENTS_MARKER}
 This repo is watched by \`bmu\`. It reports **regressions you introduce** (CRAP/complexity spikes, newly uncovered lines,
 import cycles, dependency-rule violations) right after your edits. It never blocks you.
 
-- At the start of a task run \`bmu prime\` to see the architecture brief and current findings.
+- At the start of a task run \`bmu prime\` (or the \`bmu_prime\` MCP tool) to see the architecture brief and current findings.
 - When a bmu note appears after an edit: fix it if it is in scope, otherwise run \`bmu ack <id> "<reason>"\`.
 - \`bmu explain <id|file|Element>\` for details, \`bmu diagram <dir>\` for a Mermaid UML slice, \`bmu findings --new\` for the list.
 - Pre-existing debt is listed separately; don't fix it unless asked.
@@ -77,6 +77,14 @@ export function installGrok(root: string, opts: { local: boolean }): string[] {
   const file = path.join(dir, 'bmu.json')
   writeFileSync(file, JSON.stringify(grokHooksJson(cmd), null, 2) + '\n')
   const done = [`wrote .grok/hooks/bmu.json`]
+  // project-scoped MCP server so grok gets native bmu_* tools
+  const cfg = path.join(root, '.grok', 'config.toml')
+  const cur = existsSync(cfg) ? readFileSync(cfg, 'utf8') : ''
+  if (!cur.includes('[mcp_servers.bmu]')) {
+    const [exe, ...rest] = cmd === 'bmu' ? ['bmu'] : [process.execPath, bmuBin]
+    appendFileSync(cfg, `${cur && !cur.endsWith('\n') ? '\n' : ''}\n[mcp_servers.bmu]\ncommand = ${JSON.stringify(exe)}\nargs = ${JSON.stringify([...rest, 'mcp'])}\nstartup_timeout_sec = 30\n`)
+    done.push('registered the bmu MCP server in .grok/config.toml (native bmu_* tools)')
+  }
   const agents = opts.local ? null : addAgentsSnippet(root)
   if (agents) done.push(`added bmu section to ${agents}`)
   // local mode: write instructions into a local-only rules file grok reads, and hide everything from git
@@ -85,7 +93,7 @@ export function installGrok(root: string, opts: { local: boolean }): string[] {
     mkdirSync(rules, { recursive: true })
     writeFileSync(path.join(rules, 'bmu.md'), AGENTS_SNIPPET)
     done.push('wrote .grok/rules/bmu.md (agent instructions)')
-    excludeLocally(root, ['.grok/hooks/bmu.json', '.grok/rules/bmu.md', '.bmu/'])
+    excludeLocally(root, ['.grok/hooks/bmu.json', '.grok/rules/bmu.md', '.grok/config.toml', '.bmu/'])
     done.push('added them to .git/info/exclude (local only; teammates unaffected)')
   }
   excludeLocally(root, ['.bmu/'])

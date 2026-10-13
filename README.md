@@ -47,7 +47,7 @@ What each harness gets:
 | After every edit/bash | regression note appended to the tool result (`tool.hook("execute.after")`) | `PostToolUse` → `additionalContext` |
 | Every model call | small live status block (`session.hook("context")`) | — |
 | Session start | baseline reset | `SessionStart` hook resets the baseline |
-| Tools | native `bmu.prime/status/findings/explain/diagram/ack/coverage_run` | CLI via `.grok/rules/bmu.md` instructions |
+| Tools | native `bmu.prime/status/findings/explain/diagram/ack/diff/coverage_run` | MCP server `bmu mcp` registered in `.grok/config.toml` (`bmu_prime`, `bmu_findings`, …) + `.grok/rules/bmu.md` |
 | Turn end | — | `Stop` hook only snapshots (never keeps the agent working) |
 | Status bar | — | `bmu statusline` for `[ui.status_line] type="command"` |
 | Live events | — | `bmu watch` works as a Grok `monitor` stream |
@@ -71,6 +71,10 @@ bmu check [--new]          CI gate: exit 1 on (new) high/medium findings
 bmu watch                  print regressions as files change
 bmu serve [--port N]       live browser viewer (drill-down diagrams, findings, SSE updates)
 bmu remember <note>        durable architecture note shown in prime
+bmu diff [ref]             structural regressions vs a git ref (default: merge-base with main)
+bmu init [--shared]        write config with inferred layers/runners (.bmu/config.yaml)
+bmu doctor                 diagnose parsing/resolution/coverage setup
+bmu mcp                    MCP server over stdio (any MCP-capable harness)
 ```
 
 ## Coverage

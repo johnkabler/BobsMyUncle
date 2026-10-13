@@ -14,6 +14,7 @@ import { doctor } from '../report/doctor.js'
 import { startServer } from '../server/http.js'
 import { watch } from '../engine/watch.js'
 import { initConfig } from '../engine/init.js'
+import { serveMcp } from '../mcp/server.js'
 import { findingsAt, defaultBase, structuralFindings, diffFindings } from '../engine/baseline.js'
 import { existsSync } from 'node:fs'
 
@@ -40,6 +41,7 @@ Usage: bmu <command> [options]
   statusline                 one line for a status bar (Grok [ui.status_line])
   watch                      watch files; print regressions as they happen (also for Grok's monitor tool)
   serve [--port N]           live browser viewer
+  mcp                        MCP server over stdio (tools: bmu_prime, bmu_findings, bmu_explain, bmu_diagram, …)
   version
 `
 
@@ -106,6 +108,11 @@ async function main() {
   const config = loadConfig(root)
   const json = flag(args, '--json')
   const out = (s: string) => process.stdout.write(s.endsWith('\n') ? s : s + '\n')
+
+  if (cmd === 'mcp') {
+    await serveMcp(root)
+    return
+  }
 
   if (cmd === 'init') {
     const r = initConfig(root, { shared: flag(args, '--shared'), force: flag(args, '--force') })
