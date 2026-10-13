@@ -45,6 +45,15 @@ function addAgentsSnippet(root: string): string | null {
   return 'AGENTS.md'
 }
 
+function isTracked(root: string, rel: string): boolean {
+  try {
+    execFileSync('git', ['ls-files', '--error-unmatch', rel], { cwd: root, stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Keep files out of git without touching the shared .gitignore. */
 export function excludeLocally(root: string, entries: string[]) {
   let gitDir: string
@@ -80,7 +89,10 @@ export function installGrok(root: string, opts: { local: boolean }): string[] {
   // project-scoped MCP server so grok gets native bmu_* tools
   const cfg = path.join(root, '.grok', 'config.toml')
   const cur = existsSync(cfg) ? readFileSync(cfg, 'utf8') : ''
-  if (!cur.includes('[mcp_servers.bmu]')) {
+  const tracked = isTracked(root, '.grok/config.toml')
+  if (tracked && opts.local) {
+    done.push('skipped MCP registration: .grok/config.toml is tracked by git (local install never edits team files); hooks + rules still work. Use --shared to add it.')
+  } else if (!cur.includes('[mcp_servers.bmu]')) {
     const [exe, ...rest] = cmd === 'bmu' ? ['bmu'] : [process.execPath, bmuBin]
     appendFileSync(cfg, `${cur && !cur.endsWith('\n') ? '\n' : ''}\n[mcp_servers.bmu]\ncommand = ${JSON.stringify(exe)}\nargs = ${JSON.stringify([...rest, 'mcp'])}\nstartup_timeout_sec = 30\n`)
     done.push('registered the bmu MCP server in .grok/config.toml (native bmu_* tools)')
@@ -93,7 +105,7 @@ export function installGrok(root: string, opts: { local: boolean }): string[] {
     mkdirSync(rules, { recursive: true })
     writeFileSync(path.join(rules, 'bmu.md'), AGENTS_SNIPPET)
     done.push('wrote .grok/rules/bmu.md (agent instructions)')
-    excludeLocally(root, ['.grok/hooks/bmu.json', '.grok/rules/bmu.md', '.grok/config.toml', '.bmu/'])
+    excludeLocally(root, ['.grok/hooks/bmu.json', '.grok/rules/bmu.md', ...(isTracked(root, '.grok/config.toml') ? [] : ['.grok/config.toml']), '.bmu/'])
     done.push('added them to .git/info/exclude (local only; teammates unaffected)')
   }
   excludeLocally(root, ['.bmu/'])
