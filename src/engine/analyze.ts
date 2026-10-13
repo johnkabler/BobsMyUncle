@@ -5,7 +5,7 @@ import type { BmuConfig } from '../core/config.js'
 import type { FileFacts, Model } from '../core/model.js'
 import { computeFindings, bySeverity, type Finding } from '../core/findings.js'
 import { componentMetrics, type ComponentMetrics } from '../core/graph.js'
-import { extract, langOf, DEFAULT_EXCLUDES } from '../lang/index.js'
+import { extract, langOf, DEFAULT_EXCLUDES, EXTRACTOR_VERSION } from '../lang/index.js'
 import { makeResolvers } from '../lang/resolve.js'
 import { mapReportPaths, parseCoverage, spanCoverage, crap } from '../ingest/coverage.js'
 import type { Store, FindingRow } from '../store/db.js'
@@ -31,6 +31,7 @@ export interface Analysis {
     covered?: number
     instrumented?: number
     staleFiles: number
+    measuredFiles: number
     byLang: Record<string, number>
   }
 }
@@ -77,6 +78,12 @@ export function ingestReports(root: string, store: Store, config: BmuConfig, kno
 
 export async function analyze(root: string, store: Store, config: BmuConfig, opts: { extraReports?: string[]; onlyFiles?: string[] } = {}): Promise<Analysis> {
   const t0 = Date.now()
+  if (store.getMeta('extractor') !== EXTRACTOR_VERSION) {
+    store.db.exec('DELETE FROM files')
+    // new extractor output must not show up as "new" regressions: re-baseline on next reconcile
+    if (store.getMeta('extractor') !== null) store.db.exec("DELETE FROM meta WHERE key='baseline_at'")
+    store.setMeta('extractor', EXTRACTOR_VERSION)
+  }
   const { all, sources } = sourceFiles(root, config)
   const index = store.fileIndex()
   const cached = new Map<string, FileFacts>()
@@ -138,16 +145,20 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
   let covered = 0
   let instrumented = 0
   let staleFiles = 0
+  let measuredFiles = 0
   for (const mod of model.modules.values()) {
     if (mod.isTest) continue
     const row = cov.get(mod.id)
     if (!row) continue
     const stale = row.hash !== current.get(mod.id)
     if (stale) staleFiles++
+    else measuredFiles++
     for (const el of mod.elements) {
       for (const m of el.members) {
         if (m.kind === 'field' || m.kind === 'callback' || m.cc === undefined) continue
-        const sc = spanCoverage(row.hits, m.start, m.end)
+        const nested = el.members.filter((o) => o !== m && o.cc !== undefined && o.start >= m.start && o.end <= m.end && (o.start !== m.start || o.end !== m.end))
+        const hits = nested.length ? new Map([...row.hits].filter(([l]) => !nested.some((o) => l >= o.start && l <= o.end))) : row.hits
+        const sc = spanCoverage(hits, m.start, m.end)
         if (!sc.instrumented) continue
         m.metrics.coverage = sc.ratio
         m.metrics.coveredLines = sc.covered
@@ -186,6 +197,7 @@ export async function analyze(root: string, store: Store, config: BmuConfig, opt
       covered,
       instrumented,
       staleFiles,
+      measuredFiles,
       byLang,
     },
   }

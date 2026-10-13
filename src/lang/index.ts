@@ -3,6 +3,9 @@ import { extractTypeScript } from './typescript.js'
 import { extractPython } from './python.js'
 import { extractElixir } from './elixir.js'
 
+/** Bump whenever extractor output changes so cached facts are re-parsed. */
+export const EXTRACTOR_VERSION = '3'
+
 export function langOf(file: string): Lang | null {
   if (/\.d\.[cm]?ts$/.test(file)) return null
   if (/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(file)) return 'typescript'

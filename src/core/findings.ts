@@ -35,7 +35,7 @@ function lineRanges(lines: number[]): string {
 
 export function memberLabel(elementName: string, memberName: string, elementKind: string) {
   if (elementKind === 'module') return memberName
-  if (elementKind === 'component' || elementKind === 'hook' || elementKind === 'store' || elementKind === 'machine') return elementName
+  if ((elementKind === 'component' || elementKind === 'hook' || elementKind === 'store' || elementKind === 'machine') && (memberName === 'render' || memberName === elementName)) return elementName
   return `${elementName}.${memberName}`
 }
 

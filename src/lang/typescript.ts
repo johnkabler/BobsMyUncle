@@ -12,9 +12,10 @@ const DECISIONS = new Set([
 ])
 const LOGICAL = new Set(['&&', '||', '??'])
 
-export function tsComplexity(node: Node): number {
+export function tsComplexity(node: Node, skip?: Set<number>): number {
   let cc = 1
   walk(node, (n) => {
+    if (skip && n !== node && skip.has(n.startIndex)) return false
     if (DECISIONS.has(n.type)) cc++
     else if (n.type === 'switch_case') cc++ // `default` is switch_default
     else if (n.type === 'binary_expression') {
@@ -237,6 +238,49 @@ function extractInterface(node: Node, exported: boolean, ctx: Ctx) {
 }
 
 /** Handle `function f(){}` / `const f = () => {}` at module top level. */
+const HOOK_WRAPPERS = /^(React\.)?(useCallback|useMemo)$/
+const EFFECTS = /^(React\.)?(useEffect|useLayoutEffect|useInsertionEffect)$/
+
+/** Handlers/effects declared at the top level of a component or hook body, measured separately. */
+function innerFunctions(fn: Node): { name: string; fn: Node; decl: Node }[] {
+  const body = fn.childForFieldName('body')
+  if (!body || body.type !== 'statement_block') return []
+  const out: { name: string; fn: Node; decl: Node }[] = []
+  for (const st of namedChildren(body)) {
+    if (st.type === 'function_declaration') {
+      const n = st.childForFieldName('name')?.text
+      if (n) out.push({ name: n, fn: st, decl: st })
+    } else if (st.type === 'lexical_declaration' || st.type === 'variable_declaration') {
+      for (const vd of namedChildren(st).filter((c) => c.type === 'variable_declarator')) {
+        const n = vd.childForFieldName('name')
+        let v = vd.childForFieldName('value')
+        if (!n || n.type !== 'identifier' || !v) continue
+        if (v.type === 'call_expression' && HOOK_WRAPPERS.test(v.childForFieldName('function')?.text ?? '')) {
+          const args = v.childForFieldName('arguments')
+          v = args ? namedChildren(args)[0] ?? null : null
+        }
+        if (v && isFunctionLike(v)) out.push({ name: n.text, fn: v, decl: st })
+      }
+    } else if (st.type === 'expression_statement') {
+      const call = namedChildren(st)[0]
+      if (call?.type === 'call_expression' && EFFECTS.test(call.childForFieldName('function')?.text ?? '')) {
+        const args = call.childForFieldName('arguments')
+        const f = args ? namedChildren(args)[0] : null
+        if (f && isFunctionLike(f)) out.push({ name: `effect@L${line(st)}`, fn: f, decl: st })
+      }
+    }
+  }
+  return out
+}
+
+function reactMembers(mainName: string, fnNode: Node, declNode: Node): Member[] {
+  const inner = innerFunctions(fnNode)
+  const skip = new Set(inner.map((i) => i.fn.startIndex))
+  const members: Member[] = [{ name: mainName, kind: 'function', visibility: 'public', start: line(declNode), end: endLine(declNode), cc: tsComplexity(fnNode, skip) }]
+  for (const i of inner) members.push({ name: i.name, kind: 'function', visibility: 'private', start: line(i.decl), end: endLine(i.decl), cc: tsComplexity(i.fn) })
+  return members
+}
+
 function extractFunction(name: string, fnNode: Node, declNode: Node, exported: boolean, ctx: Ctx) {
   const cc = tsComplexity(fnNode)
   if (isPascal(name) && containsJsx(fnNode)) {
@@ -246,7 +290,7 @@ function extractFunction(name: string, fnNode: Node, declNode: Node, exported: b
       start: line(declNode),
       end: endLine(declNode),
       exported,
-      members: [{ name: 'render', kind: 'function', visibility: 'public', start: line(declNode), end: endLine(declNode), cc }],
+      members: reactMembers('render', fnNode, declNode),
     })
     collectReactRefs(name, fnNode, ctx)
     return
@@ -258,7 +302,7 @@ function extractFunction(name: string, fnNode: Node, declNode: Node, exported: b
       start: line(declNode),
       end: endLine(declNode),
       exported,
-      members: [{ name, kind: 'function', visibility: 'public', start: line(declNode), end: endLine(declNode), cc }],
+      members: reactMembers(name, fnNode, declNode),
     })
     collectReactRefs(name, fnNode, ctx)
     return

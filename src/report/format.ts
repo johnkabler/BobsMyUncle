@@ -51,7 +51,7 @@ export function statusSummary(a: Analysis, store: Store): string {
   const parts = [
     `${s.modules} modules`,
     `${s.elements} elements`,
-    `cov ${pct(s.coverage)}${s.staleFiles ? ` (${s.staleFiles} stale)` : ''}`,
+    `cov ${pct(s.coverage)}${s.measuredFiles ? ` of ${s.measuredFiles} measured file${s.measuredFiles > 1 ? 's' : ''}` : ''}${s.staleFiles ? ` (${s.staleFiles} stale)` : ''}`,
     `${a.cycles.length} cycles`,
     `${rows.length} open findings (${newSince.length} new since baseline)`,
   ]

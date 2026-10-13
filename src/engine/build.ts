@@ -148,28 +148,51 @@ export function buildModel(root: string, facts: FileFacts[], resolvers: Record<L
   return { root, modules, elements, moduleEdges, elementEdges }
 }
 
-/** Reverse-dependency closure: which test files (transitively) depend on the given files. */
-export function affectedTests(model: Model, changed: string[]): string[] {
+const stem = (p: string) =>
+  p
+    .split('/')
+    .pop()!
+    .replace(/\.(test|spec)(?=\.)/, '')
+    .replace(/^test_/, '')
+    .replace(/_test(?=\.)/, '')
+    .replace(/\.[^.]+$/, '')
+
+/**
+ * Tests most likely to exercise the changed files: name-matched tests and direct importers first,
+ * then transitive dependents by increasing distance, up to `limit` files.
+ */
+export function affectedTests(model: Model, changed: string[], limit = 25): string[] {
   const rev = new Map<string, string[]>()
   for (const e of model.moduleEdges) {
     if (e.to.startsWith('ext:')) continue
     ;(rev.get(e.to) ?? rev.set(e.to, []).get(e.to)!).push(e.from)
   }
+  const picked: string[] = []
+  const add = (t: string) => {
+    if (!picked.includes(t) && isRunnableTest(t)) picked.push(t)
+  }
+  // changed tests themselves
+  for (const c of changed) if (model.modules.get(c)?.isTest) add(c)
+  // name-matched tests (foo.ts <-> foo.test.ts / test_foo.py / foo_test.exs)
+  const stems = new Set(changed.map(stem))
+  const tests = [...model.modules.values()].filter((m) => m.isTest)
+  for (const t of tests) if (stems.has(stem(t.id)) && changed.some((c) => model.moduleEdges.some((e) => e.from === t.id && e.to === c))) add(t.id)
+  // BFS by distance
   const seen = new Set<string>(changed)
-  const queue = [...changed]
-  const tests = new Set<string>()
-  while (queue.length) {
-    const f = queue.shift()!
-    const m = model.modules.get(f)
-    if (m?.isTest) tests.add(f)
-    for (const p of rev.get(f) ?? []) {
-      if (!seen.has(p)) {
+  let frontier = [...changed]
+  while (frontier.length && picked.length < limit) {
+    const next: string[] = []
+    for (const f of frontier) {
+      for (const p of rev.get(f) ?? []) {
+        if (seen.has(p)) continue
         seen.add(p)
-        queue.push(p)
+        if (model.modules.get(p)?.isTest) add(p)
+        else next.push(p)
       }
     }
+    frontier = next
   }
-  return [...tests].filter((t) => isRunnableTest(t)).sort()
+  return picked.slice(0, Math.max(limit, 1))
 }
 
 const isRunnableTest = (p: string) =>
