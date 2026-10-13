@@ -35,5 +35,6 @@
     "grammars",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "packageManager": "pnpm@12.4.1"
 }

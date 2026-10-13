@@ -195,6 +195,19 @@ function classDiagram(a: Analysis, level: string, maxNodes: number, interactive 
         lines.push(`  ${from} ..> ${to}${label}`)
     }
   }
+  // module-level dependencies between shown files (Elixir/Python calls, imports) as dashed "uses" arrows
+  const primary = new Map<string, string>()
+  for (const e of shown) if (!primary.has(e.module) || a.model.elements.get(primary.get(e.module)!)?.kind === 'module') primary.set(e.module, e.id)
+  const linked = new Set(a.model.elementEdges.map((e) => `${a.model.elements.get(e.from)?.module}|${a.model.elements.get(e.to)?.module}`))
+  let uses = 0
+  for (const e of a.model.moduleEdges) {
+    const f = primary.get(e.from)
+    const t = primary.get(e.to)
+    if (!f || !t || f === t || linked.has(`${e.from}|${e.to}`) || uses >= 60) continue
+    linked.add(`${e.from}|${e.to}`)
+    lines.push(`  ${safeId(f)} ..> ${safeId(t)} : ${e.kind === 'type-only' ? 'types' : e.kind === 'compile-time' ? 'compile' : 'uses'}`)
+    uses++
+  }
   for (const [id, name] of external) lines.push(`  class ${safeId(id)}["${esc(name)}"]`)
   if (els.length > maxNodes) lines.push(`  %% … +${els.length - maxNodes} more elements`)
   return lines.join('\n')
