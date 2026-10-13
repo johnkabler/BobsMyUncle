@@ -399,7 +399,12 @@ async function handleHook(root: string, store: Store, config: ReturnType<typeof 
       }
       store.setMeta('hook_fp', fingerprint(root, config))
       store.setMeta('hook_pending_report', '0')
-      const msg = hookMessage(d, config.report.hookMaxLines)
+      let msg = hookMessage(d, config.report.hookMaxLines)
+      const covErr = store.getMeta('coverage_error')
+      if (covErr) {
+        msg = (msg ? msg + '\n' : '') + `bmu: background test run could not run tests (${covErr}). Coverage findings may be missing; run the tests your usual way (bmu ingests coverage/lcov.info), or configure runners in .bmu/config.yaml.`
+        store.setMeta('coverage_error', '')
+      }
       if (!msg) return
       if (harness === 'grok' || harness === 'claude') {
         out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: msg } }))

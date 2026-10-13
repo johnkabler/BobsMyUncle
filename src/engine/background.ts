@@ -6,7 +6,7 @@ import type { BmuConfig } from '../core/config.js'
 import type { Store } from '../store/db.js'
 import { analyze, reconcile, type Analysis } from './analyze.js'
 import { affectedTests } from './build.js'
-import { planRuns, execute, type RunResult } from '../runners/index.js'
+import { planRuns, execute, ranTests, type RunResult } from '../runners/index.js'
 
 interface Pending {
   at: number
@@ -124,7 +124,14 @@ export async function runCoverage(root: string, store: Store, config: BmuConfig,
       results.push(r)
       store.event('coverage.finished', { tool: plan.tool, code: r.code, ms: r.ms, reports: r.reports.length })
       log(`bmu: ${plan.tool} exited ${r.code} in ${(r.ms / 1000).toFixed(1)}s; ${r.reports.length} report(s)`)
-      if (!r.reports.length) log(r.output.slice(-3000))
+      if (!ranTests(plan.tool, r.code, r.output)) {
+        // tests did not run (collection/config error): coverage would be all zeros — don't ingest it
+        const clean = r.output.replace(/\x1b\[[0-9;]*m/g, '')
+        const lastErr = clean.trim().split('\n').filter((l) => /error|Error|failed|cannot|Cannot/.test(l)).pop() ?? clean.trim().split('\n').pop() ?? ''
+        r.reports = []
+        store.setMeta('coverage_error', `${plan.tool} exited ${r.code}: ${lastErr.trim().slice(0, 240)}`)
+        log(r.output.slice(-3000))
+      } else store.setMeta('coverage_error', '')
     }
     const reports = results.flatMap((r) => r.reports.map((p) => path.relative(root, p)))
     const after = await analyze(root, store, config, { extraReports: reports, onlyFiles: opts.all ? undefined : files })

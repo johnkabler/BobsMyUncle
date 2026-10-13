@@ -75,6 +75,32 @@ function applyWrap(cmd: string[], rc?: RunnerConfig, env: Record<string, string>
   return ['sh', '-c', w]
 }
 
+/** `export NAME ?= value` / `export NAME := value` lines from a Makefile: env the project's own test targets rely on. */
+export function makefileExports(dir: string): Record<string, string> {
+  const txt = read(path.join(dir, 'Makefile'))
+  const out: Record<string, string> = {}
+  for (const m of txt.matchAll(/^export\s+([A-Z_][A-Z0-9_]*)\s*(\?=|:=|=)\s*(.*)$/gm)) {
+    const v = m[3].replace(/\s+#.*$/, '').trim()
+    if (v.includes('$(') || v.includes('${')) continue
+    if (m[2] === '?=' && process.env[m[1]] !== undefined) continue
+    out[m[1]] = v
+  }
+  return out
+}
+
+/** Did the test tool actually run tests (so its coverage is meaningful)? */
+export function ranTests(tool: RunPlan['tool'], code: number | null, output = ''): boolean {
+  if (code === null) return false
+  const summary: Record<RunPlan['tool'], RegExp> = {
+    pytest: /\b\d+ (passed|failed|errors?)\b/,
+    jest: /^Tests:\s+.*\d+ (passed|failed)/m,
+    vitest: /Tests\s+.*\d+ (passed|failed)/,
+    exunit: /\b\d+ (tests?|doctests?),\s+\d+ failures?/,
+  }
+  const okCode = tool === 'pytest' ? code === 0 || code === 1 : tool === 'exunit' ? code === 0 || code === 2 : code === 0 || code === 1
+  return okCode && (output === '' || summary[tool].test(output))
+}
+
 const rel = (from: string, to: string) => path.relative(from, to).split(path.sep).join('/') || '.'
 
 /** Plan coverage runs for the given test files (repo-relative), grouped by tool + project dir. */
@@ -115,7 +141,7 @@ export function planRuns(root: string, config: BmuConfig, tests: string[], sourc
     const rc = config.runners[g.lang]
     const testArgs = g.tests.map((t) => rel(g.dir, path.join(root, t)))
     const srcArgs = sources.filter((s) => path.join(root, s).startsWith(g.dir + path.sep)).map((s) => rel(g.dir, path.join(root, s)))
-    const env: Record<string, string> = { CI: '1', ...(rc?.env ?? {}) }
+    const env: Record<string, string> = { CI: '1', ...makefileExports(g.dir), ...(rc?.env ?? {}) }
     let cmd: string[]
     let reports: string[] = [path.join(outDir, 'lcov.info')]
     if (g.tool === 'vitest') {
@@ -145,7 +171,7 @@ export function planRuns(root: string, config: BmuConfig, tests: string[], sourc
         const run = [...prefix, 'coverage', 'run', `--data-file=${data}`, '-m', 'pytest', ...testArgs, ...markArgs, '-q', '-p', 'no:cacheprovider']
         const report = [...prefix, 'coverage', 'lcov', `--data-file=${data}`, '-o', lcov]
         const q = (a: string[]) => a.map((x) => (/[\s"'$]/.test(x) ? `'${x.replace(/'/g, `'\\''`)}'` : x)).join(' ')
-        cmd = ['sh', '-c', `${q(run)}; ${q(report)}`]
+        cmd = ['sh', '-c', `${q(run)}; rc=$?; ${q(report)}; exit $rc`]
       }
     } else {
       // exunit
