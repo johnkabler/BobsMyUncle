@@ -80,6 +80,12 @@ describe('pipeline: typescript fixture', () => {
     expect(mm).toMatch(/<<service>>/)
     expect(mm).toMatch(/injects/)
     expect(prime(a, store)).toMatch(/Dependency rule/)
+    const comp = diagram(a, { level: '', view: 'components', interactive: true })
+    expect(comp).toMatch(/flowchart TB/)
+    expect(comp).toMatch(/click n_src call bmuOpen\("src"\)/)
+    const core = diagram(a, { level: 'src', view: 'components' })
+    expect(core).toMatch(/linkStyle/) // red dependency-rule violation edge core -> http
+    expect(diagram(a, { level: 'src/core/helpers' })).toMatch(/classDiagram/)
     store.close()
   })
 })
@@ -103,6 +109,9 @@ describe('pipeline: python + elixir fixtures', () => {
     expect(a.findings.some((f) => f.rule === 'layer' && f.subject.startsWith('lib/shop/orders/bad.ex'))).toBe(true)
     expect(a.model.elementEdges.some((e) => e.kind === 'implements' && e.to.endsWith('#Shop.Payments.Gateway'))).toBe(true)
     expect(a.model.elementEdges.some((e) => e.kind === 'association')).toBe(true)
+    const money = a.model.elements.get('lib/shop/render.ex#Shop.Money')!
+    expect(money.kind).toBe('struct')
+    expect(money.members.filter((m) => m.kind === 'field').map((m) => m.name)).toEqual(['amount', 'currency', 'precision'])
     expect(affectedTests(a.model, ['lib/shop/orders/order.ex'])).toContain('test/shop/orders_test.exs')
     store.close()
     rmSync(root, { recursive: true, force: true })

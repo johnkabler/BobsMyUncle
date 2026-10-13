@@ -62,3 +62,14 @@ describe('config', () => {
     expect(c.runners.elixir?.wrap).toMatch(/docker/)
   })
 })
+
+import { globToRegExp } from '../src/engine/files.js'
+describe('globs', () => {
+  it('translates ** and * globs', () => {
+    expect(globToRegExp('test/fixtures/**').test('test/fixtures/a/b.ts')).toBe(true)
+    expect(globToRegExp('**/*.spec.ts').test('src/a/b.spec.ts')).toBe(true)
+    expect(globToRegExp('**/*.spec.ts').test('b.spec.ts')).toBe(true)
+    expect(globToRegExp('src/*.ts').test('src/a/b.ts')).toBe(false)
+    expect(globToRegExp('src/?.ts').test('src/a.ts')).toBe(true)
+  })
+})
