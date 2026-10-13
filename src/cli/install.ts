@@ -156,9 +156,10 @@ export default {
     void (async () => {
       try {
         for await (const ev of ctx.event.subscribe({ signal: controller.signal })) {
-          const dir = ev?.location?.directory
+          const dir = ev?.location?.directory ?? ev?.data?.location?.directory
           if (dir && path.resolve(dir) !== path.resolve(cwd)) continue
-          if (ev.type === "session.created") void bmu(["hook", "session-start", "--harness", "opencode"], cwd, "{}")
+          // subagent (child) sessions must not reset the parent's baseline
+          if (ev.type === "session.created" && !ev?.data?.parentID) void bmu(["hook", "session-start", "--harness", "opencode"], cwd, "{}")
           else if (ev.type === "session.execution.succeeded") void bmu(["hook", "turn-end", "--harness", "opencode"], cwd, "{}")
         }
       } catch {}
