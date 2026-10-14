@@ -8,7 +8,7 @@ import { affectedTests } from '../engine/build.js'
 import { diagram } from '../report/mermaid.js'
 import { hookMessage, prime, statusSummary, statusLine, findingLine, deltaLines, budget } from '../report/format.js'
 import { bySeverity } from '../core/findings.js'
-import { installGrok, installOpencode } from './install.js'
+import { installGrok, installOpencode, installClaude } from './install.js'
 import { explain } from '../report/explain.js'
 import { doctor } from '../report/doctor.js'
 import { hotspots } from '../report/hotspots.js'
@@ -38,8 +38,8 @@ Usage: bmu <command> [options]
   check [--new]              exit 1 if (new) high/medium findings exist (CI)
   remember <note>            durable team/architecture note shown in prime
   init [--shared] [--force]  write a config with inferred layers/runners (.bmu/config.yaml, or bmu.config.yaml with --shared)
-  install grok|opencode [--local|--shared]
-  hook <session-start|post-tool|turn-end> --harness grok|opencode   (reads JSON on stdin)
+  install claude|grok|opencode [--local|--shared]
+  hook <session-start|post-tool|prompt-submit|turn-end> --harness claude|grok|opencode   (reads JSON on stdin)
   propose list|add|show|rm  what-if component groupings (e.g. by Common Closure Principle), evaluated without changing code
   mutate [files...]          run Stryker on changed files (TS/JS) and report surviving mutants
   hotspots [--since '3 months ago'] [--top N]   churn × complexity
@@ -131,8 +131,10 @@ async function main() {
     const shared = flag(args, '--shared')
     flag(args, '--local')
     const local = !shared
-    const lines = target === 'grok' ? installGrok(root, { local }) : target === 'opencode' ? installOpencode(root, { local }) : null
-    if (!lines) throw new Error('usage: bmu install grok|opencode [--local|--shared]')
+    const statusline = flag(args, '--statusline')
+    const lines =
+      target === 'claude' ? installClaude(root, { local, statusline }) : target === 'grok' ? installGrok(root, { local }) : target === 'opencode' ? installOpencode(root, { local }) : null
+    if (!lines) throw new Error('usage: bmu install claude|grok|opencode [--local|--shared] [--statusline (claude)]')
     if (!['bmu.config.yaml', 'bmu.config.yml', '.bmu/config.yaml'].some((f) => existsSync(path.join(root, f)))) {
       const r = initConfig(root, { shared: shared })
       lines.push(`wrote ${path.relative(root, r.file)}`, ...r.notes.map((n) => '  ' + n))
@@ -370,45 +372,69 @@ async function main() {
   }
 }
 
+/** Hook output: JSON `hookSpecificOutput.additionalContext` for Claude/Grok, plain text for OpenCode. */
+function emitContext(out: (s: string) => void, harness: string, eventName: string, msg: string) {
+  if (!msg) return
+  if (harness === 'opencode') out(msg)
+  else out(JSON.stringify({ hookSpecificOutput: { hookEventName: eventName, additionalContext: msg } }))
+}
+
+/**
+ * Analyse, reconcile and build the note for regressions not yet reported (shared by post-tool and
+ * prompt-submit). Returns '' when nothing changed since the last hook.
+ */
+async function pendingNote(root: string, store: Store, config: ReturnType<typeof loadConfig>): Promise<string> {
+  // fast path: nothing relevant changed since the last hook (e.g. a read-only bash command)
+  const fp = fingerprint(root, config)
+  if (store.getMeta('hook_fp') === fp && store.getMeta('hook_pending_report') !== '1') return ''
+  const a = await analyze(root, store, config)
+  const d = reconcile(store, a.findings, { mark: true })
+  writeContextFile(a, store)
+  if (a.changed.length) {
+    store.event('files.changed', { files: a.changed })
+    if (config.coverage.background && affectedTests(a.model, a.changed).length) {
+      queueCoverage(root, a.changed)
+      spawnBackgroundCoverage(root)
+    }
+  }
+  store.setMeta('hook_fp', fingerprint(root, config))
+  store.setMeta('hook_pending_report', '0')
+  let msg = hookMessage(d, config.report.hookMaxLines)
+  const covErr = store.getMeta('coverage_error')
+  if (covErr) {
+    msg = (msg ? msg + '\n' : '') + `bmu: background test run could not run tests (${covErr}). Coverage findings may be missing; run the tests your usual way (bmu ingests coverage/lcov.info), or configure runners in .bmu/config.yaml.`
+    store.setMeta('coverage_error', '')
+  }
+  return msg
+}
+
 async function handleHook(root: string, store: Store, config: ReturnType<typeof loadConfig>, event: string, harness: string, payload: any, out: (s: string) => void) {
+  // Grok also loads .claude/settings*.json hooks; when grok's own bmu hooks exist, let those handle it.
+  if (harness === 'claude' && process.env.GROK_HOOK_EVENT && existsSync(path.join(root, '.grok', 'hooks', 'bmu.json'))) return
   // Hooks must never break the agent: swallow errors, always exit 0.
   try {
     if (event === 'session-start') {
+      const source = String(payload.source ?? 'startup')
       const a = await analyze(root, store, config)
       reconcile(store, a.findings, { mark: false })
-      store.resetBaseline()
+      // a resumed/compacted session keeps its baseline; new and cleared sessions start fresh
+      if (source === 'startup' || source === 'clear' || harness !== 'claude') store.resetBaseline()
       writeContextFile(a, store)
-      store.event('session.start', { harness })
+      store.setMeta('hook_fp', fingerprint(root, config))
+      store.event('session.start', { harness, source })
+      // Claude Code adds SessionStart context before the first prompt (Grok ignores SessionStart stdout)
+      if (harness === 'claude') emitContext(out, harness, 'SessionStart', prime(a, store, 900))
       return
     }
     if (event === 'post-tool') {
       const tool = String(payload.toolName ?? payload.tool_name ?? payload.tool ?? '')
-      if (tool && !/edit|write|patch|replace|bash|shell|terminal|command|multiedit/i.test(tool)) return
-      // fast path: nothing relevant changed since the last hook (e.g. a read-only bash command)
-      const fp = fingerprint(root, config)
-      if (store.getMeta('hook_fp') === fp && store.getMeta('hook_pending_report') !== '1') return
-      const a = await analyze(root, store, config)
-      const d = reconcile(store, a.findings, { mark: true })
-      writeContextFile(a, store)
-      if (a.changed.length) {
-        store.event('files.changed', { files: a.changed })
-        if (config.coverage.background && affectedTests(a.model, a.changed).length) {
-          queueCoverage(root, a.changed)
-          spawnBackgroundCoverage(root)
-        }
-      }
-      store.setMeta('hook_fp', fingerprint(root, config))
-      store.setMeta('hook_pending_report', '0')
-      let msg = hookMessage(d, config.report.hookMaxLines)
-      const covErr = store.getMeta('coverage_error')
-      if (covErr) {
-        msg = (msg ? msg + '\n' : '') + `bmu: background test run could not run tests (${covErr}). Coverage findings may be missing; run the tests your usual way (bmu ingests coverage/lcov.info), or configure runners in .bmu/config.yaml.`
-        store.setMeta('coverage_error', '')
-      }
-      if (!msg) return
-      if (harness === 'grok' || harness === 'claude') {
-        out(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: msg } }))
-      } else out(msg)
+      if (tool && !/edit|write|patch|replace|bash|shell|terminal|command|multiedit|notebook/i.test(tool)) return
+      emitContext(out, harness, 'PostToolUse', await pendingNote(root, store, config))
+      return
+    }
+    if (event === 'prompt-submit') {
+      // between turns: deliver what arrived since (background coverage results, edits made outside the agent)
+      emitContext(out, harness, 'UserPromptSubmit', await pendingNote(root, store, config))
       return
     }
     if (event === 'turn-end') {

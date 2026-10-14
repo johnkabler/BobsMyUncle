@@ -51,7 +51,8 @@ function componentDiagram(a: Analysis, level: string, maxNodes: number, interact
   const mods = [...a.model.modules.values()].filter((m) => !m.isTest && under(m.id, level))
   const children = new Map<string, { modules: number; worstCrap: number; cov: [number, number] }>()
   for (const m of mods) {
-    const c = childOf(m.id, level)!
+    const c = childOf(m.id, level)
+    if (!c) continue
     const info = children.get(c) ?? { modules: 0, worstCrap: 0, cov: [0, 0] }
     info.modules++
     for (const el of m.elements)

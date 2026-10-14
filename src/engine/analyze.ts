@@ -342,10 +342,12 @@ export function reconcile(store: Store, findings: Finding[], opts: { mark: boole
       store.upsertFinding(f, now, firstRun ? f.value : null)
     }
     const resolved: FindingRow[] = []
+    const touchedNow = store.changedSinceBaseline()
     for (const [id, row] of before) {
       if (row.status !== 'resolved' && !currentIds.has(id)) {
         store.resolveFinding(id)
-        if (row.reported_value !== null || row.baseline_value === null) resolved.push(row)
+        // announce fixes the agent made: reported/new findings, and baseline debt in files it touched
+        if (row.reported_value !== null || row.baseline_value === null || touchedNow.has(row.file)) resolved.push(row)
       }
     }
     if (firstRun) {
