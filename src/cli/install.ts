@@ -31,8 +31,8 @@ import cycles, dependency-rule violations) right after your edits. It never bloc
 <!-- bmu:end -->
 `
 
-function addAgentsSnippet(root: string): string | null {
-  for (const name of ['AGENTS.md', 'CLAUDE.md']) {
+function addAgentsSnippet(root: string, order: string[] = ['AGENTS.md', 'CLAUDE.md']): string | null {
+  for (const name of order) {
     const p = path.join(root, name)
     if (existsSync(p)) {
       const txt = readFileSync(p, 'utf8')
@@ -41,8 +41,8 @@ function addAgentsSnippet(root: string): string | null {
       return name
     }
   }
-  writeFileSync(path.join(root, 'AGENTS.md'), AGENTS_SNIPPET)
-  return 'AGENTS.md'
+  writeFileSync(path.join(root, order[0]), AGENTS_SNIPPET)
+  return order[0]
 }
 
 function isTracked(root: string, rel: string): boolean {
@@ -215,5 +215,104 @@ export function installOpencode(root: string, opts: { local: boolean }): string[
   }
   excludeLocally(root, ['.bmu/'])
   done.push('restart OpenCode in this directory to load the plugin')
+  return done
+}
+
+// ---------------- Claude Code ----------------
+
+const isBmuHook = (h: any) => typeof h?.command === 'string' && /(^|[\s/])bmu(\.js)?['"]?\s+hook\s/.test(h.command)
+
+export function claudeHooks(cmd: string) {
+  const h = (event: string, timeout: number) => ({ type: 'command', command: `${cmd} hook ${event} --harness claude`, timeout })
+  return {
+    SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: [h('session-start', 60)] }],
+    PostToolUse: [{ matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [h('post-tool', 60)] }],
+    UserPromptSubmit: [{ hooks: [h('prompt-submit', 20)] }],
+    Stop: [{ hooks: [h('turn-end', 10)] }],
+  }
+}
+
+/** Merge bmu hooks into a Claude settings object, replacing any previous bmu entries and keeping everything else. */
+export function mergeClaudeSettings(settings: any, cmd: string, statusline: boolean): any {
+  const out = settings && typeof settings === 'object' ? structuredClone(settings) : {}
+  out.hooks = out.hooks && typeof out.hooks === 'object' ? out.hooks : {}
+  for (const [event, groups] of Object.entries<any[]>(out.hooks)) {
+    if (!Array.isArray(groups)) continue
+    out.hooks[event] = groups
+      .map((g) => ({ ...g, hooks: (g.hooks ?? []).filter((h: any) => !isBmuHook(h)) }))
+      .filter((g) => g.hooks.length)
+    if (!out.hooks[event].length) delete out.hooks[event]
+  }
+  for (const [event, groups] of Object.entries(claudeHooks(cmd))) out.hooks[event] = [...(out.hooks[event] ?? []), ...groups]
+  if (statusline) out.statusLine = { type: 'command', command: `${cmd} statusline`, padding: 0 }
+  return out
+}
+
+function readJsonFile(p: string): any {
+  try {
+    return JSON.parse(readFileSync(p, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function hasCli(name: string): boolean {
+  try {
+    execFileSync('sh', ['-c', `command -v ${name}`], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function installClaude(root: string, opts: { local: boolean; statusline?: boolean }): string[] {
+  const cmd = bmuCommand()
+  const done: string[] = []
+  const rel = opts.local ? '.claude/settings.local.json' : '.claude/settings.json'
+  if (opts.local && isTracked(root, rel)) {
+    return [`${rel} is tracked by git; a local install never edits team files. Re-run with --shared to add bmu to .claude/settings.json.`]
+  }
+  const file = path.join(root, rel)
+  mkdirSync(path.dirname(file), { recursive: true })
+  writeFileSync(file, JSON.stringify(mergeClaudeSettings(readJsonFile(file), cmd, !!opts.statusline), null, 2) + '\n')
+  done.push(`wrote bmu hooks to ${rel} (SessionStart context, PostToolUse notes, UserPromptSubmit catch-up, Stop snapshot)`)
+  if (opts.statusline) done.push('set statusLine → bmu statusline (overrides your user-level status line in this project)')
+
+  // MCP server: local scope via the claude CLI (no approval prompt, nothing in the repo); shared via .mcp.json
+  const [exe, ...rest] = cmd === 'bmu' ? ['bmu'] : [process.execPath, bmuBin]
+  if (opts.local && hasCli('claude') && !process.env.BMU_SKIP_MCP_REGISTER) {
+    try {
+      execFileSync('claude', ['mcp', 'remove', 'bmu', '-s', 'local'], { cwd: root, stdio: 'ignore' })
+    } catch {
+      /* not registered yet */
+    }
+    try {
+      execFileSync('claude', ['mcp', 'add', '-s', 'local', 'bmu', '--', exe, ...rest, 'mcp'], { cwd: root, stdio: 'ignore' })
+      done.push('registered the bmu MCP server for this project (claude mcp add -s local)')
+    } catch {
+      done.push('could not register the MCP server automatically; run: claude mcp add -s local bmu -- bmu mcp')
+    }
+  } else if (!opts.local) {
+    const mcpFile = path.join(root, '.mcp.json')
+    const mcp = readJsonFile(mcpFile)
+    mcp.mcpServers = { ...(mcp.mcpServers ?? {}), bmu: { command: exe, args: [...rest, 'mcp'] } }
+    writeFileSync(mcpFile, JSON.stringify(mcp, null, 2) + '\n')
+    done.push('added the bmu MCP server to .mcp.json (teammates approve it once)')
+  }
+
+  if (opts.local) {
+    const rules = path.join(root, '.claude', 'rules')
+    mkdirSync(rules, { recursive: true })
+    writeFileSync(path.join(rules, 'bmu.md'), AGENTS_SNIPPET)
+    done.push('wrote .claude/rules/bmu.md (agent instructions)')
+    excludeLocally(root, ['.claude/settings.local.json', '.claude/rules/bmu.md', '.bmu/'])
+    done.push('added them to .git/info/exclude (local only; teammates unaffected)')
+  } else {
+    const agents = addAgentsSnippet(root, ['CLAUDE.md', 'AGENTS.md'])
+    if (agents) done.push(`added bmu section to ${agents}`)
+  }
+  excludeLocally(root, ['.bmu/'])
+  done.push('start (or restart) claude in this directory; accept the workspace trust prompt so hooks can run')
+  if (existsSync(path.join(root, '.grok', 'hooks', 'bmu.json'))) done.push('note: grok also reads .claude/settings*.json; bmu skips the claude copy inside grok, so nothing runs twice')
   return done
 }

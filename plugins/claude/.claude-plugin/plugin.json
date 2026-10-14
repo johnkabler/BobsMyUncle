@@ -1,0 +1,11 @@
+{
+  "name": "bmu",
+  "displayName": "bmu (BobsMyUncle)",
+  "version": "0.1.0",
+  "description": "Live UML + code-quality feedback for Claude Code: reports only what your change made worse (CRAP, complexity, uncovered lines, mutants, cycles, dependency-rule violations). Never blocks.",
+  "author": { "name": "JP Kabler", "url": "https://github.com/johnkabler" },
+  "homepage": "https://github.com/johnkabler/BobsMyUncle",
+  "repository": "https://github.com/johnkabler/BobsMyUncle",
+  "license": "MIT",
+  "keywords": ["code-quality", "uml", "crap", "coverage", "clean-architecture"]
+}

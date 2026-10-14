@@ -1,6 +1,6 @@
 # BobsMyUncle (`bmu`)
 
-A live UML + code-quality monitor **built for LLM coding agents** (OpenCode, Grok Build) and the humans watching them.
+A live UML + code-quality monitor **built for LLM coding agents** (Claude Code, OpenCode, Grok Build) and the humans watching them.
 Inspired by Uncle Bob's [uml-viewer](https://github.com/unclebob/uml-viewer), rebuilt for **TypeScript, Python and Elixir**.
 
 `bmu` keeps a UML-style model of your repo up to date as files change: modules, classes, React components/hooks,
@@ -38,22 +38,34 @@ Run inside the repo you want to watch. Installs are **local by default**: files 
 so teammates are unaffected and nothing is committed.
 
 ```sh
+bmu install claude       # .claude/settings.local.json hooks + .claude/rules/bmu.md + `claude mcp add -s local bmu`
+bmu install claude --statusline   # also show `bmu statusline` in Claude Code's status bar for this project
 bmu install opencode     # .opencode/plugins/bmu/index.js (OpenCode V2 plugin)
 bmu install grok         # .grok/hooks/bmu.json + .grok/rules/bmu.md, then run /hooks-trust once in grok
 bmu install grok --shared   # same, but writes an AGENTS.md section and doesn't hide the files from git
 ```
 
+Claude Code users can also install bmu as a **plugin** instead (hooks + MCP server + skill; needs `bmu` on PATH):
+
+```
+/plugin install bmu --marketplace johnkabler/BobsMyUncle
+```
+
+(Use either the plugin or `bmu install claude`, not both, or each hook runs twice.)
+
 What each harness gets:
 
-| | OpenCode V2 | Grok Build |
-|---|---|---|
-| After every edit/bash | regression note appended to the tool result (`tool.hook("execute.after")`) | `PostToolUse` → `additionalContext` |
-| Every model call | small live status block (`session.hook("context")`) | — |
-| Session start | baseline reset | `SessionStart` hook resets the baseline |
-| Tools | native `bmu.prime/status/findings/explain/diagram/ack/diff/coverage_run` | MCP server `bmu mcp` registered in `.grok/config.toml` (`bmu_prime`, `bmu_findings`, …) + `.grok/rules/bmu.md` |
-| Turn end | — | `Stop` hook only snapshots (never keeps the agent working) |
-| Status bar | — | `bmu statusline` for `[ui.status_line] type="command"` |
-| Live events | — | `bmu watch` works as a Grok `monitor` stream |
+| | Claude Code | OpenCode V2 | Grok Build |
+|---|---|---|---|
+| After every edit/bash | `PostToolUse` → `additionalContext` | regression note appended to the tool result (`tool.hook("execute.after")`) | `PostToolUse` → `additionalContext` |
+| Session start | baseline reset + **bmu prime brief injected as context** (resume/compact keep the baseline) | baseline reset | baseline reset |
+| Between turns | `UserPromptSubmit` delivers anything new (e.g. background coverage results) | live status block in every model call (`session.hook("context")`) | — |
+| Tools | MCP `bmu_*` tools (local scope) + `.claude/rules/bmu.md` / plugin skill | native `bmu.prime/status/findings/explain/diagram/ack/diff/coverage_run` | MCP server `bmu mcp` in `.grok/config.toml` + `.grok/rules/bmu.md` |
+| Turn end | `Stop` hook only snapshots (never keeps Claude working) | — | `Stop` hook only snapshots |
+| Status bar | `--statusline` | — | `bmu statusline` for `[ui.status_line] type="command"` |
+| Live events | — | — | `bmu watch` works as a Grok `monitor` stream |
+
+Grok also loads `.claude/settings*.json` hooks; when both are installed, the Claude copy stays silent inside Grok.
 
 Both were verified end-to-end with real sessions: the agent reads `bmu prime`, sees the note after a bad edit,
 and either fixes the problem or acknowledges it with `bmu ack`.
