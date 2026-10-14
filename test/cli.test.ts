@@ -114,3 +114,18 @@ describe('claude code', () => {
     expect(r.stdout).toBe('')
   })
 })
+
+describe('claude plugin package', () => {
+  it('hooks.json covers the same events as bmu install claude', async () => {
+    const { claudeHooks } = await import('../src/cli/install.js')
+    const plugin = JSON.parse(readFileSync('plugins/claude/hooks/hooks.json', 'utf8'))
+    expect(Object.keys(plugin.hooks).sort()).toEqual(Object.keys(claudeHooks('bmu')).sort())
+    for (const [ev, groups] of Object.entries<any>(plugin.hooks)) {
+      const local = (claudeHooks('bmu') as any)[ev][0]
+      expect(groups[0].matcher).toBe(local.matcher)
+      expect(groups[0].hooks[0].args.join(' ')).toBe(local.hooks[0].command.replace(/^bmu /, ''))
+    }
+    const market = JSON.parse(readFileSync('.claude-plugin/marketplace.json', 'utf8'))
+    expect(market.plugins[0].source).toBe('./plugins/claude')
+  })
+})

@@ -1,0 +1,9 @@
+{
+  "description": "bmu: baseline at session start, regression notes after edits, catch-up on each prompt, snapshot at turn end (never blocks)",
+  "hooks": {
+    "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [{ "type": "command", "command": "bmu", "args": ["hook", "session-start", "--harness", "claude"], "timeout": 60 }] }],
+    "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash", "hooks": [{ "type": "command", "command": "bmu", "args": ["hook", "post-tool", "--harness", "claude"], "timeout": 60 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "bmu", "args": ["hook", "prompt-submit", "--harness", "claude"], "timeout": 20 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "bmu", "args": ["hook", "turn-end", "--harness", "claude"], "timeout": 10 }] }]
+  }
+}

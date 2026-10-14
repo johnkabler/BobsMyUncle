@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "bobsmyuncle",
+  "description": "bmu — live UML + code-quality feedback (CRAP, coverage, cycles, dependency rule) for coding agents",
+  "owner": { "name": "JP Kabler", "url": "https://github.com/johnkabler" },
+  "plugins": [
+    {
+      "name": "bmu",
+      "source": "./plugins/claude",
+      "description": "Reports code-quality regressions (complexity/CRAP spikes, new uncovered lines, import cycles, dependency-rule violations) right after Claude's edits. Never blocks. Requires the bmu CLI on PATH.",
+      "category": "development",
+      "tags": ["code-quality", "uml", "coverage", "clean-architecture", "typescript", "python", "elixir"]
+    }
+  ]
+}

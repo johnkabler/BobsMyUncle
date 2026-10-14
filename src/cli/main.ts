@@ -8,7 +8,7 @@ import { affectedTests } from '../engine/build.js'
 import { diagram } from '../report/mermaid.js'
 import { hookMessage, prime, statusSummary, statusLine, findingLine, deltaLines, budget } from '../report/format.js'
 import { bySeverity } from '../core/findings.js'
-import { installGrok, installOpencode, installClaude } from './install.js'
+import { installGrok, installOpencode, installClaude, excludeLocally } from './install.js'
 import { explain } from '../report/explain.js'
 import { doctor } from '../report/doctor.js'
 import { hotspots } from '../report/hotspots.js'
@@ -415,6 +415,12 @@ async function handleHook(root: string, store: Store, config: ReturnType<typeof 
   try {
     if (event === 'session-start') {
       const source = String(payload.source ?? 'startup')
+      // plugin installs skip `bmu install`: keep .bmu/ out of git and infer layers on first use
+      excludeLocally(root, ['.bmu/'])
+      if (!['bmu.config.yaml', 'bmu.config.yml', '.bmu/config.yaml'].some((f) => existsSync(path.join(root, f)))) {
+        initConfig(root, {})
+        config = loadConfig(root)
+      }
       const a = await analyze(root, store, config)
       reconcile(store, a.findings, { mark: false })
       // a resumed/compacted session keeps its baseline; new and cleared sessions start fresh
